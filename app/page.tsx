@@ -532,8 +532,8 @@ export default function Home() {
         performance.now();
 
       if (
-        volume > 0.08 &&
-        volumeIncrease > 0.025 &&
+        volume > 0.03 &&
+        volumeIncrease > 0.01 &&
         now -
           lastInputTimeRef.current >
           180
@@ -1008,6 +1008,8 @@ export default function Home() {
 
     lastInputTimeRef.current =
       0;
+      previousVolumeRef.current =
+  0;
 
     previousVolumeRef.current =
       0;
