@@ -79,7 +79,7 @@ export default function Home() {
   // ==========================================
 
   const [clickEnabled, setClickEnabled] =
-    useState(false);
+    useState(true);
 
   // ==========================================
   // Phase
@@ -204,7 +204,7 @@ export default function Home() {
   // ==========================================
 
   const clickEnabledRef =
-    useRef<boolean>(false);
+    useRef<boolean>(true);
 
   // ==========================================
   // Phase変更
@@ -1680,7 +1680,7 @@ export default function Home() {
               <div>
 
                 <p className="font-semibold">
-                  クリック オン/オフ
+                  クリック オフ/オン
                 </p>
 
                 <p className="text-xs text-zinc-500 mt-1">
