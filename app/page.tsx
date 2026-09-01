@@ -79,7 +79,7 @@ export default function Home() {
   // ==========================================
 
   const [clickEnabled, setClickEnabled] =
-    useState(true);
+    useState(false);
 
   // ==========================================
   // Phase
@@ -204,7 +204,7 @@ export default function Home() {
   // ==========================================
 
   const clickEnabledRef =
-    useRef<boolean>(true);
+    useRef<boolean>(false);
 
   // ==========================================
   // Phase変更
@@ -1680,43 +1680,39 @@ export default function Home() {
               <div>
 
                 <p className="font-semibold">
-                  クリック音
+                  クリック オン/オフ
                 </p>
 
                 <p className="text-xs text-zinc-500 mt-1">
                   {clickEnabled
-                    ? "本番8拍すべてクリックあり"
-                    : "本番5〜8拍を無音にします"}
+                    ? "8拍すべてクリックあり"
+                    : "4クリックありの後、4クリックなし"}
                 </p>
 
               </div>
 
               <button
-                type="button"
-                onClick={() =>
-                  handleClickEnabledChange(
-                    !clickEnabled
-                  )
-                }
-                aria-pressed={
-                  clickEnabled
-                }
-                className={`relative w-14 h-8 rounded-full transition-colors ${
-                  clickEnabled
-                    ? "bg-zinc-900"
-                    : "bg-zinc-300"
-                }`}
-              >
-
-                <span
-                  className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
-                    clickEnabled
-                      ? "translate-x-7"
-                      : "translate-x-1"
-                  }`}
-                />
-
-              </button>
+  type="button"
+  onClick={() =>
+    handleClickEnabledChange(
+      !clickEnabled
+    )
+  }
+  aria-pressed={clickEnabled}
+  className={`relative flex-shrink-0 w-14 h-8 rounded-full transition-colors ${
+    clickEnabled
+      ? "bg-zinc-900"
+      : "bg-zinc-300"
+  }`}
+>
+  <span
+    className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+      clickEnabled
+        ? "translate-x-6"
+        : "translate-x-0"
+    }`}
+  />
+</button>
 
             </div>
 
