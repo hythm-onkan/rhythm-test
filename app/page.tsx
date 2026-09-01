@@ -6,6 +6,21 @@ const DEFAULT_BPM = 80;
 const COUNT_IN_BEATS = 4;
 const TEST_BEATS = 8;
 
+// iframeの高さを親ページ（WordPress）へ通知
+function notifyParentHeight() {
+  if (typeof window === "undefined") return;
+
+  const height = document.documentElement.scrollHeight;
+
+  window.parent.postMessage(
+    {
+      type: "rhythm-test-height",
+      height,
+    },
+    "*"
+  );
+}
+
 // タップを有効とする最大ズレ
 const MAX_MATCH_ERROR = 200;
 
@@ -31,6 +46,22 @@ type Phase =
   | "finished";
 
 export default function Home() {
+  useEffect(() => {
+  notifyParentHeight();
+
+  const observer = new ResizeObserver(() => {
+    notifyParentHeight();
+  });
+
+  observer.observe(document.documentElement);
+
+  window.addEventListener("load", notifyParentHeight);
+
+  return () => {
+    observer.disconnect();
+    window.removeEventListener("load", notifyParentHeight);
+  };
+}, []);
   const [mode, setMode] =
     useState<InputMode>("tap");
 
