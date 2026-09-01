@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_BPM = 80;
-const COUNT_IN_BEATS = 4;
+const COUNT_IN_BEATS = 8;
 const TEST_BEATS = 16;
 
 // iframeの高さを親ページ（WordPress）へ通知
@@ -450,20 +450,22 @@ export default function Home() {
 
   useEffect(() => {
     const handleKeyDown = (
-      event: KeyboardEvent
-    ) => {
-      if (
-        event.code === "Space" &&
-        mode === "tap" &&
-        phaseRef.current === "test"
-      ) {
-        event.preventDefault();
+  event: KeyboardEvent
+) => {
+  if (
+    (event.code === "Space" ||
+      event.code === "KeyL" ||
+      event.code === "KeyR") &&
+    mode === "tap" &&
+    phaseRef.current === "test"
+  ) {
+    event.preventDefault();
 
-        registerInput(
-          performance.now()
-        );
-      }
-    };
+    registerInput(
+      performance.now()
+    );
+  }
+};
 
     window.addEventListener(
       "keydown",
@@ -927,35 +929,36 @@ export default function Home() {
     // ========================================
 
     const sd =
-      calculateStandardDeviation(
-        matched
-      );
+  calculateStandardDeviation(
+    matched
+  );
 
-    const roundedSD =
-      Math.round(sd);
+const roundedSD =
+  Math.round(sd);
 
-    setStandardDeviation(
-      roundedSD
-    );
+setStandardDeviation(
+  roundedSD
+);
 
-    const stability =
-      Math.max(
-        0,
-        Math.min(
-          100,
-          100 -
-            sd * 0.5
-        )
-      );
+// タップ数が少ない場合は安定度を0点にする
+let stability = 0;
 
-    const roundedStability =
-      Math.round(
-        stability
-      );
+if (matched.length >= 5) {
+  stability = Math.max(
+    0,
+    Math.min(
+      100,
+      100 - sd * 1.2
+    )
+  );
+}
 
-    setStabilityScore(
-      roundedStability
-    );
+const roundedStability =
+  Math.round(stability);
+
+setStabilityScore(
+  roundedStability
+);
 
     // ========================================
     // ヒット率
@@ -980,20 +983,25 @@ export default function Home() {
     // 入力数による上限
     // ========================================
 
-    const scoreLimits: Record<
-      number,
-      number
-    > = {
-      0: 0,
-      1: 30,
-      2: 40,
-      3: 50,
-      4: 60,
-      5: 70,
-      6: 80,
-      7: 90,
-      8: 100,
-    };
+    const scoreLimits: Record<number, number> = {
+  0: 0,
+  1: 0,
+  2: 5,
+  3: 10,
+  4: 15,
+  5: 20,
+  6: 30,
+  7: 35,
+  8: 40,
+  9: 50,
+  10: 55,
+  11: 60,
+  12: 70,
+  13: 75,
+  14: 85,
+  15: 90,
+  16: 100,
+};
 
     const scoreLimit =
       scoreLimits[
@@ -1118,7 +1126,7 @@ export default function Home() {
     );
 
     const beatInterval =
-      getBeatInterval();
+  getBeatInterval() / 2;
 
     const startAudioTime =
       audioContext.currentTime +
@@ -1155,9 +1163,9 @@ export default function Home() {
       // ======================================
 
       scheduleClick(
-        audioTime,
-        count === 0
-      );
+  audioTime,
+  count % 2 === 0
+);
 
       setCountIn(
         COUNT_IN_BEATS -
@@ -1868,27 +1876,25 @@ export default function Home() {
 
               <div className="mt-4">
 
-                <button
-                  type="button"
-                  onPointerDown={
-                    handleTap
-                  }
-                  style={{
-                    touchAction:
-                      "manipulation",
-                    WebkitTapHighlightColor:
-                      "transparent",
-                    userSelect:
-                      "none",
-                  }}
-                  className={`w-full h-44 sm:h-48 rounded-3xl text-3xl font-bold transition-transform ${
-                    tapFlash
-                      ? "bg-zinc-700 text-white scale-[0.97]"
-                      : "bg-zinc-900 text-white"
-                  }`}
-                >
-                  TAP!
-                </button>
+               <button
+  type="button"
+  onPointerDown={
+    handleTap
+  }
+  style={{
+    touchAction: "manipulation",
+    WebkitTapHighlightColor:
+      "transparent",
+    userSelect: "none",
+  }}
+  className={`w-full h-44 sm:h-48 rounded-3xl text-3xl font-bold transition-transform ${
+    tapFlash
+      ? "bg-zinc-700 text-white scale-[0.97]"
+      : "bg-zinc-900 text-white"
+  }`}
+>
+  TAP
+</button>
 
                 <p className="text-center text-xs text-zinc-400 mt-3">
 
@@ -2288,7 +2294,7 @@ export default function Home() {
         <p className="text-center text-xs text-zinc-400 mt-8">
 
           {mode === "tap"
-            ? "クリック・タップ・スペースキーで入力できます。"
+            ? "クリック・タップ・スペースキー・L・Rで入力できます。"
             : "マイクで手拍子のタイミングを検出します。"}
 
         </p>
