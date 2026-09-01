@@ -46,24 +46,44 @@ type Phase =
   | "finished";
 
 export default function Home() {
+  // ==========================================
+  // iframe高さ自動調整
+  // ==========================================
+
   useEffect(() => {
-  notifyParentHeight();
-
-  const observer = new ResizeObserver(() => {
     notifyParentHeight();
-  });
 
-  observer.observe(document.documentElement);
+    const observer = new ResizeObserver(() => {
+      notifyParentHeight();
+    });
 
-  window.addEventListener("load", notifyParentHeight);
+    observer.observe(document.documentElement);
 
-  return () => {
-    observer.disconnect();
-    window.removeEventListener("load", notifyParentHeight);
-  };
-}, []);
+    window.addEventListener("load", notifyParentHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("load", notifyParentHeight);
+    };
+  }, []);
+
+  // ==========================================
+  // モード
+  // ==========================================
+
   const [mode, setMode] =
     useState<InputMode>("tap");
+
+  // ==========================================
+  // クリック音 ON / OFF
+  // ==========================================
+
+  const [clickEnabled, setClickEnabled] =
+    useState(true);
+
+  // ==========================================
+  // Phase
+  // ==========================================
 
   const [phase, setPhase] =
     useState<Phase>("idle");
@@ -180,6 +200,13 @@ export default function Home() {
     useRef<number>(DEFAULT_BPM);
 
   // ==========================================
+  // Click setting ref
+  // ==========================================
+
+  const clickEnabledRef =
+    useRef<boolean>(true);
+
+  // ==========================================
   // Phase変更
   // ==========================================
 
@@ -190,6 +217,27 @@ export default function Home() {
       newPhase;
 
     setPhase(newPhase);
+  };
+
+  // ==========================================
+  // クリック音設定変更
+  // ==========================================
+
+  const handleClickEnabledChange = (
+    enabled: boolean
+  ) => {
+    // テスト中は変更不可
+    if (
+      phaseRef.current === "test" ||
+      phaseRef.current === "countIn"
+    ) {
+      return;
+    }
+
+    clickEnabledRef.current =
+      enabled;
+
+    setClickEnabled(enabled);
   };
 
   // ==========================================
@@ -635,19 +683,6 @@ export default function Home() {
   const calculateTimingScore = (
     averageAbsoluteError: number
   ) => {
-    /*
-     * 平均絶対誤差による採点
-     *
-     * 0ms   → 100点
-     * 15ms  → 約100点
-     * 30ms  → 約95点
-     * 50ms  → 約85点
-     * 75ms  → 約70点
-     * 100ms → 約50点
-     * 150ms → 約25点
-     * 200ms → 0点
-     */
-
     if (
       averageAbsoluteError <= 15
     ) {
@@ -803,7 +838,6 @@ export default function Home() {
         }
       }
 
-      // ±200ms以内のみ有効
       if (
         closestIndex !== -1 &&
         closestError <=
@@ -933,10 +967,6 @@ export default function Home() {
 
     // ========================================
     // 総合点
-    //
-    // タイミング 65%
-    // 安定度     15%
-    // 入力率     20%
     // ========================================
 
     const rawScore =
@@ -1039,8 +1069,6 @@ export default function Home() {
 
     lastInputTimeRef.current =
       0;
-      previousVolumeRef.current =
-  0;
 
     previousVolumeRef.current =
       0;
@@ -1122,6 +1150,10 @@ export default function Home() {
           (beatInterval /
             1000);
 
+      // ======================================
+      // プリカウントは常にクリックあり
+      // ======================================
+
       scheduleClick(
         audioTime,
         count === 0
@@ -1189,10 +1221,27 @@ export default function Home() {
         performanceTime
       );
 
-      scheduleClick(
-        audioTime,
-        i % 4 === 0
-      );
+      // ======================================
+      // クリック音の設定
+      //
+      // ON
+      // → 8拍すべて鳴る
+      //
+      // OFF
+      // → 1〜4拍だけ鳴る
+      // → 5〜8拍は無音
+      // ======================================
+
+      const shouldPlayClick =
+        clickEnabledRef.current ||
+        i < 4;
+
+      if (shouldPlayClick) {
+        scheduleClick(
+          audioTime,
+          i % 4 === 0
+        );
+      }
     }
 
     // ========================================
@@ -1389,202 +1438,158 @@ export default function Home() {
     return "拍ごとのタイミングにばらつきがあります。";
   };
 
- // ==========================================
-// リズム診断
-// ==========================================
+  // ==========================================
+  // リズム診断
+  // ==========================================
 
-const getRhythmDiagnosis = () => {
-  const inputCount =
-    errors.length;
+  const getRhythmDiagnosis = () => {
+    const inputCount =
+      errors.length;
 
-  const average =
-    averageError ?? 0;
+    const average =
+      averageError ?? 0;
 
-  const stability =
-    stabilityScore ?? 0;
+    const stability =
+      stabilityScore ?? 0;
 
-  const sd =
-    standardDeviation ?? 999;
+    const sd =
+      standardDeviation ?? 999;
 
-  // ========================================
-  // 入力数が少ない
-  // ========================================
+    if (inputCount <= 3) {
+      return {
+        title: "拍感トレーニング型",
+        description:
+          "まずはクリックの拍をしっかり感じ取るところから始めてみましょう。ゆっくりしたテンポで、1拍ずつクリックと同じタイミングに音を出す練習がおすすめです。",
+      };
+    }
 
-  if (inputCount <= 3) {
+    if (inputCount <= 5) {
+      return {
+        title: "リズム定着中型",
+        description:
+          "クリックに合わせられる場面が増えてきています。まずは8拍すべてを最後まで続けることを意識すると、さらに安定していきます。",
+      };
+    }
+
+    if (inputCount === 6) {
+      return {
+        title: "リズム成長型",
+        description:
+          "基本的な拍を捉える力が身についてきています。入力できる拍を少しずつ増やしながら、最後まで安定して続ける練習をしてみましょう。",
+      };
+    }
+
+    if (
+      Math.abs(average) <= 15 &&
+      stability >= 90 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "精密タイミング型",
+        description:
+          "クリックの中心を非常に正確に捉えています。タイミングの正確さと安定性の両方が高く、非常に優れたリズム感があります。",
+      };
+    }
+
+    if (
+      Math.abs(average) <= 20 &&
+      stability >= 85 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "安定タイミング型",
+        description:
+          "クリックの中心を安定して捉えています。大きなズレも少なく、一定のテンポをキープする力があります。この感覚をさまざまなテンポでも維持してみましょう。",
+      };
+    }
+
+    if (
+      average < -20 &&
+      stability >= 85 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "安定した前ノリ型",
+        description:
+          "タイミングはかなり安定しており、全体的に少し早めに入る傾向があります。前に進むようなリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
+      };
+    }
+
+    if (
+      average > 20 &&
+      stability >= 85 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "安定した後ノリ型",
+        description:
+          "タイミングはかなり安定しており、全体的に少し遅めに入る傾向があります。落ち着いたリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
+      };
+    }
+
+    if (
+      average <= -20 &&
+      stability >= 75 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "前ノリ傾向型",
+        description:
+          "全体的に少し早めに入る傾向があります。リズムを前に進める感覚がある一方で、拍の中心から少し前に出やすい傾向があります。クリックの中心を意識してみましょう。",
+      };
+    }
+
+    if (
+      average >= 20 &&
+      stability >= 75 &&
+      inputCount >= 7
+    ) {
+      return {
+        title: "後ノリ傾向型",
+        description:
+          "全体的に少し遅めに入る傾向があります。落ち着いて拍を捉えられている一方で、拍の中心より少し後ろに入りやすい傾向があります。クリックの中心を意識してみましょう。",
+      };
+    }
+
+    if (
+      stability < 60 &&
+      inputCount >= 6
+    ) {
+      return {
+        title: "タイミング変動型",
+        description:
+          "拍ごとのタイミングにばらつきが見られます。早くなったり遅くなったりしないよう、クリックをよく聴きながら一定のタイミングで音を出す練習がおすすめです。",
+      };
+    }
+
+    if (
+      Math.abs(average) > 70 &&
+      inputCount >= 6
+    ) {
+      return {
+        title: "タイミング調整型",
+        description:
+          "拍を捉えることはできていますが、クリックとのズレがやや大きくなっています。まずはテンポを落として、クリックの瞬間に合わせる感覚を身につけていきましょう。",
+      };
+    }
+
+    if (
+      stability >= 75 &&
+      inputCount >= 6
+    ) {
+      return {
+        title: "リズム安定成長型",
+        description:
+          "基本的なリズム感が身についてきています。拍を捉える力も比較的安定しています。次はテンポを変えても同じタイミングを維持できるように練習してみましょう。",
+      };
+    }
+
     return {
-      title: "拍感トレーニング型",
+      title: "リズムトレーニング型",
       description:
-        "まずはクリックの拍をしっかり感じ取るところから始めてみましょう。ゆっくりしたテンポで、1拍ずつクリックと同じタイミングに音を出す練習がおすすめです。",
+        "基本的な拍を捉える力があります。クリックをよく聴きながら、拍の中心に合わせる練習を続けてみましょう。",
     };
-  }
-
-  if (inputCount <= 5) {
-    return {
-      title: "リズム定着中型",
-      description:
-        "クリックに合わせられる場面が増えてきています。まずは8拍すべてを最後まで続けることを意識すると、さらに安定していきます。",
-    };
-  }
-
-  if (inputCount === 6) {
-    return {
-      title: "リズム成長型",
-      description:
-        "基本的な拍を捉える力が身についてきています。入力できる拍を少しずつ増やしながら、最後まで安定して続ける練習をしてみましょう。",
-    };
-  }
-
-  // ========================================
-  // 非常に高精度
-  // ========================================
-
-  if (
-    Math.abs(average) <= 15 &&
-    stability >= 90 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "精密タイミング型",
-      description:
-        "クリックの中心を非常に正確に捉えています。タイミングの正確さと安定性の両方が高く、非常に優れたリズム感があります。",
-    };
-  }
-
-  // ========================================
-  // 安定＋ほぼジャスト
-  // ========================================
-
-  if (
-    Math.abs(average) <= 20 &&
-    stability >= 85 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "安定タイミング型",
-      description:
-        "クリックの中心を安定して捉えています。大きなズレも少なく、一定のテンポをキープする力があります。この感覚をさまざまなテンポでも維持してみましょう。",
-    };
-  }
-
-  // ========================================
-  // 安定＋前ノリ
-  // ========================================
-
-  if (
-    average < -20 &&
-    stability >= 85 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "安定した前ノリ型",
-      description:
-        "タイミングはかなり安定しており、全体的に少し早めに入る傾向があります。前に進むようなリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
-    };
-  }
-
-  // ========================================
-  // 安定＋後ノリ
-  // ========================================
-
-  if (
-    average > 20 &&
-    stability >= 85 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "安定した後ノリ型",
-      description:
-        "タイミングはかなり安定しており、全体的に少し遅めに入る傾向があります。落ち着いたリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
-    };
-  }
-
-  // ========================================
-  // 前ノリ傾向
-  // ========================================
-
-  if (
-    average <= -20 &&
-    stability >= 75 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "前ノリ傾向型",
-      description:
-        "全体的に少し早めに入る傾向があります。リズムを前に進める感覚がある一方で、拍の中心から少し前に出やすい傾向があります。クリックの中心を意識してみましょう。",
-    };
-  }
-
-  // ========================================
-  // 後ノリ傾向
-  // ========================================
-
-  if (
-    average >= 20 &&
-    stability >= 75 &&
-    inputCount >= 7
-  ) {
-    return {
-      title: "後ノリ傾向型",
-      description:
-        "全体的に少し遅めに入る傾向があります。落ち着いて拍を捉えられている一方で、拍の中心より少し後ろに入りやすい傾向があります。クリックの中心を意識してみましょう。",
-    };
-  }
-
-  // ========================================
-  // タイミングのばらつき
-  // ========================================
-
-  if (
-    stability < 60 &&
-    inputCount >= 6
-  ) {
-    return {
-      title: "タイミング変動型",
-      description:
-        "拍ごとのタイミングにばらつきが見られます。早くなったり遅くなったりしないよう、クリックをよく聴きながら一定のタイミングで音を出す練習がおすすめです。",
-    };
-  }
-
-  // ========================================
-  // 精度改善型
-  // ========================================
-
-  if (
-    Math.abs(average) > 70 &&
-    inputCount >= 6
-  ) {
-    return {
-      title: "タイミング調整型",
-      description:
-        "拍を捉えることはできていますが、クリックとのズレがやや大きくなっています。まずはテンポを落として、クリックの瞬間に合わせる感覚を身につけていきましょう。",
-    };
-  }
-
-  // ========================================
-  // 標準
-  // ========================================
-
-  if (
-    stability >= 75 &&
-    inputCount >= 6
-  ) {
-    return {
-      title: "リズム安定成長型",
-      description:
-        "基本的なリズム感が身についてきています。拍を捉える力も比較的安定しています。次はテンポを変えても同じタイミングを維持できるように練習してみましょう。",
-    };
-  }
-
-  // ========================================
-  // デフォルト
-  // ========================================
-
-  return {
-    title: "リズムトレーニング型",
-    description:
-      "基本的な拍を捉える力があります。クリックをよく聴きながら、拍の中心に合わせる練習を続けてみましょう。",
   };
-};
 
   // ==========================================
   // 画面
@@ -1601,7 +1606,9 @@ const getRhythmDiagnosis = () => {
     >
       <div className="w-full max-w-3xl">
 
-        {/* タイトル */}
+        {/* ===================================
+            タイトル
+        ==================================== */}
 
         <div className="text-center mb-10">
 
@@ -1619,7 +1626,9 @@ const getRhythmDiagnosis = () => {
 
         </div>
 
-        {/* モード選択 */}
+        {/* ===================================
+            モード選択
+        ==================================== */}
 
         {(phase === "idle" ||
           phase === "finished") && (
@@ -1657,11 +1666,92 @@ const getRhythmDiagnosis = () => {
           </div>
         )}
 
-        {/* メインカード */}
+        {/* ===================================
+            設定
+        ==================================== */}
+
+        {(phase === "idle" ||
+          phase === "finished") && (
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-5 mb-4">
+
+            <div className="flex items-center justify-between">
+
+              <div>
+
+                <p className="font-semibold">
+                  クリック音
+                </p>
+
+                <p className="text-xs text-zinc-500 mt-1">
+                  {clickEnabled
+                    ? "本番8拍すべてクリックあり"
+                    : "本番5〜8拍を無音にします"}
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleClickEnabledChange(
+                    !clickEnabled
+                  )
+                }
+                aria-pressed={
+                  clickEnabled
+                }
+                className={`relative w-14 h-8 rounded-full transition-colors ${
+                  clickEnabled
+                    ? "bg-zinc-900"
+                    : "bg-zinc-300"
+                }`}
+              >
+
+                <span
+                  className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                    clickEnabled
+                      ? "translate-x-7"
+                      : "translate-x-1"
+                  }`}
+                />
+
+              </button>
+
+            </div>
+
+            <div className="mt-4 rounded-xl bg-zinc-50 p-4">
+
+              <div className="flex items-center gap-2 text-sm">
+
+                <span className="font-semibold">
+                  {clickEnabled
+                    ? "ON"
+                    : "OFF"}
+                </span>
+
+                <span className="text-zinc-500">
+                  {clickEnabled
+                    ? "クリックを聴きながら8拍"
+                    : "4拍目までクリック → 5〜8拍は無音"}
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+        )}
+
+        {/* ===================================
+            メインカード
+        ==================================== */}
 
         <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-8 sm:p-12 shadow-sm">
 
-          {/* BPM */}
+          {/* =================================
+              BPM
+          ================================== */}
 
           <div className="text-center">
 
@@ -1708,7 +1798,9 @@ const getRhythmDiagnosis = () => {
 
           </div>
 
-          {/* ビート表示 */}
+          {/* =================================
+              ビート表示
+          ================================== */}
 
           <div className="h-32 flex items-center justify-center my-6">
 
@@ -1755,12 +1847,25 @@ const getRhythmDiagnosis = () => {
 
                 </div>
 
+                {/* 無音区間表示 */}
+
+                {phase === "test" &&
+                  !clickEnabled && (
+
+                    <p className="text-center text-xs text-zinc-400 mt-5">
+                      5〜8拍目は無音です
+                    </p>
+
+                  )}
+
               </div>
             )}
 
           </div>
 
-          {/* TAPボタン */}
+          {/* =================================
+              TAPボタン
+          ================================== */}
 
           {mode === "tap" &&
             phase !== "finished" && (
@@ -1794,7 +1899,11 @@ const getRhythmDiagnosis = () => {
                   {phase === "countIn"
                     ? "準備中。本番の1拍目からタップしてください"
                     : phase === "test"
-                    ? "クリック音に合わせてタップしてください"
+                    ? clickEnabled
+                      ? "クリック音に合わせてタップしてください"
+                      : currentBeat >= 4
+                      ? "無音です。テンポを内部で感じてタップしてください"
+                      : "クリック音に合わせてタップしてください"
                     : "スタートするとテストが始まります"}
 
                 </p>
@@ -1802,7 +1911,9 @@ const getRhythmDiagnosis = () => {
               </div>
             )}
 
-          {/* マイク */}
+          {/* =================================
+              マイク
+          ================================== */}
 
           {mode === "mic" &&
             phase === "test" && (
@@ -1838,7 +1949,9 @@ const getRhythmDiagnosis = () => {
               </div>
             )}
 
-          {/* プリカウント */}
+          {/* =================================
+              プリカウント
+          ================================== */}
 
           {phase === "countIn" && (
 
@@ -1855,7 +1968,9 @@ const getRhythmDiagnosis = () => {
             </div>
           )}
 
-          {/* 本番 */}
+          {/* =================================
+              本番
+          ================================== */}
 
           {phase === "test" && (
 
@@ -1872,9 +1987,9 @@ const getRhythmDiagnosis = () => {
             </div>
           )}
 
-          {/* ===================================
+          {/* =================================
               結果
-          ==================================== */}
+          ================================== */}
 
           {phase === "finished" && (
 
@@ -1900,9 +2015,7 @@ const getRhythmDiagnosis = () => {
 
               </div>
 
-              {/* ===================================
-                  タイミング安定度
-              ==================================== */}
+              {/* タイミング安定度 */}
 
               {stabilityScore !== null && (
 
@@ -1973,7 +2086,6 @@ const getRhythmDiagnosis = () => {
                         </p>
 
                       </div>
-
                     )}
 
                   </div>
@@ -1985,9 +2097,7 @@ const getRhythmDiagnosis = () => {
                 </div>
               )}
 
-              {/* ===================================
-                  平均タイミング
-              ==================================== */}
+              {/* 平均タイミング */}
 
               {averageError !== null && (
 
@@ -2131,7 +2241,9 @@ const getRhythmDiagnosis = () => {
             </div>
           )}
 
-          {/* スタート */}
+          {/* =================================
+              スタート
+          ================================== */}
 
           {(phase === "idle" ||
             phase === "finished") && (
@@ -2151,7 +2263,9 @@ const getRhythmDiagnosis = () => {
             </button>
           )}
 
-          {/* 入力数 */}
+          {/* =================================
+              入力数
+          ================================== */}
 
           {(phase === "test" ||
             phase === "finished") && (
@@ -2171,7 +2285,9 @@ const getRhythmDiagnosis = () => {
 
         </div>
 
-        {/* 説明 */}
+        {/* ===================================
+            説明
+        ==================================== */}
 
         <p className="text-center text-xs text-zinc-400 mt-8">
 
