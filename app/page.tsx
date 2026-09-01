@@ -1599,7 +1599,7 @@ const getRhythmDiagnosis = () => {
       translate="no"
       className="min-h-screen bg-white text-zinc-900 flex items-center justify-center p-6"
     >
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-3xl">
 
         {/* タイトル */}
 
