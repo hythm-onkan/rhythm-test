@@ -144,16 +144,6 @@ export default function Home() {
     useRef<number>(0);
 
   // ==========================================
-  // デバッグ
-  // ==========================================
-
-  const [debugInputErrors, setDebugInputErrors] =
-    useState<(number | null)[]>([]);
-
-  const [matchedCount, setMatchedCount] =
-    useState(0);
-
-  // ==========================================
   // Audio
   // ==========================================
 
@@ -1191,52 +1181,6 @@ export default function Home() {
         : rawInputTimes;
 
     // ========================================
-    // デバッグ
-    // ========================================
-
-    const inputDebugErrors:
-      (number | null)[] =
-      inputTimes.map(
-        (input) => {
-          let closestError =
-            Infinity;
-
-          for (
-            let i = 0;
-            i <
-            beatTimes.length;
-            i++
-          ) {
-            const error =
-              Math.round(
-                input -
-                beatTimes[i]
-              );
-
-            if (
-              Math.abs(error) <
-              Math.abs(
-                closestError
-              )
-            ) {
-              closestError =
-                error;
-            }
-          }
-
-          return Number.isFinite(
-            closestError
-          )
-            ? closestError
-            : null;
-        }
-      );
-
-    setDebugInputErrors(
-      inputDebugErrors
-    );
-
-    // ========================================
     // 各拍に最も近い入力
     // ========================================
 
@@ -1310,10 +1254,6 @@ export default function Home() {
         );
       }
     }
-
-    setMatchedCount(
-      matched.length
-    );
 
     setErrors(
       matched
@@ -1698,13 +1638,11 @@ export default function Home() {
         beatIndex <
         COUNT_IN_BEATS
       ) {
-        // 4 → 3 → 2 → 1
         setCountIn(
           COUNT_IN_BEATS -
             beatIndex
         );
       } else {
-        // 4 → 3 → 2 → 1
         setCountIn(
           COUNT_IN_BEATS +
             CALIBRATION_BEATS -
@@ -1812,10 +1750,6 @@ export default function Home() {
     setCalibrationInputCount(0);
 
     setErrors([]);
-
-    setDebugInputErrors([]);
-
-    setMatchedCount(0);
 
     setScore(null);
 
@@ -2697,20 +2631,21 @@ export default function Home() {
 
           {/* マイク調整説明 */}
 
-          {phase === "calibrating" && (
+          {mode === "mic" &&
+            phase === "calibrating" && (
 
-            <div className="text-center mt-5">
+              <div className="text-center mt-5">
 
-              <p className="font-semibold">
-                マイクを調整しています
-              </p>
+                <p className="font-semibold">
+                  マイクを調整しています
+                </p>
 
-              <p className="text-sm text-zinc-500 mt-1">
-                クリックに合わせて手拍子してください
-              </p>
+                <p className="text-sm text-zinc-500 mt-1">
+                  クリックに合わせて手拍子してください
+                </p>
 
-            </div>
-          )}
+              </div>
+            )}
 
           {/* 本番 */}
 
@@ -2728,6 +2663,30 @@ export default function Home() {
 
             </div>
           )}
+
+          {/* マイクモードの自動調整説明 */}
+
+          {mode === "mic" &&
+            (phase === "idle" ||
+              phase === "finished") && (
+
+              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+
+                <p className="font-semibold text-blue-900">
+                  🎙 マイク自動調整について
+                </p>
+
+                <p className="text-sm text-blue-800 mt-2 leading-relaxed">
+                  マイクモードでは、テスト前に4拍の自動調整を行います。
+                  クリックに合わせて手拍子することで、この端末のマイク入力の遅延を自動的に補正します。
+                </p>
+
+                <p className="text-xs text-blue-700 mt-2">
+                  最初の4拍は準備、続く4拍でマイク調整、その後8拍の本番テストです。
+                </p>
+
+              </div>
+            )}
 
           {/* 結果 */}
 
@@ -2803,115 +2762,6 @@ export default function Home() {
                     </div>
 
                   )}
-
-                </div>
-              )}
-
-              {/* デバッグ */}
-
-              {mode === "mic" && (
-
-                <div className="mt-8 rounded-2xl border border-orange-200 bg-orange-50 p-5">
-
-                  <p className="font-semibold text-orange-900">
-                    マイク検出デバッグ
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-3 mt-4">
-
-                    <div className="rounded-xl bg-white p-3">
-
-                      <p className="text-xs text-zinc-500">
-                        検出した入力
-                      </p>
-
-                      <p className="text-2xl font-bold mt-1">
-                        {tapCount}
-                        回
-                      </p>
-
-                    </div>
-
-                    <div className="rounded-xl bg-white p-3">
-
-                      <p className="text-xs text-zinc-500">
-                        採点できた入力
-                      </p>
-
-                      <p className="text-2xl font-bold mt-1">
-                        {matchedCount}
-                        回
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                  {debugInputErrors.length >
-                    0 && (
-
-                    <div className="mt-5">
-
-                      <p className="text-sm font-semibold text-orange-900 mb-3">
-                        補正後の各検出入力の最も近い拍との差
-                      </p>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-
-                        {debugInputErrors.map(
-                          (
-                            error,
-                            index
-                          ) => (
-
-                            <div
-                              key={index}
-                              className="rounded-xl bg-white border border-orange-100 p-3 text-center"
-                            >
-
-                              <p className="text-xs text-zinc-400">
-                                入力{" "}
-                                {index +
-                                  1}
-                              </p>
-
-                              <p className="font-bold mt-1">
-
-                                {error ===
-                                null
-                                  ? "-"
-                                  : error >
-                                    0
-                                  ? `+${error}`
-                                  : error}
-
-                                {error !==
-                                  null && (
-                                  <span className="text-xs ml-1 font-normal">
-                                    ms
-                                  </span>
-                                )}
-
-                              </p>
-
-                            </div>
-
-                          )
-                        )}
-
-                      </div>
-
-                    </div>
-                  )}
-
-                  {tapCount > 0 &&
-                    matchedCount ===
-                      0 && (
-
-                      <p className="text-sm text-orange-800 mt-5 leading-relaxed">
-                        入力は検出されていますが、補正後もクリックの基準時刻から±200ms以内に入った入力がありません。
-                      </p>
-                    )}
 
                 </div>
               )}
