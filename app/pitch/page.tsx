@@ -1104,6 +1104,41 @@ export default function PitchPage() {
     };
   }, []);
 
+  useEffect(() => {
+  const sendHeight = () => {
+    const main = document.querySelector("main");
+
+    if (!main) return;
+
+    const height = Math.ceil(
+      main.getBoundingClientRect().height
+    );
+
+    window.parent.postMessage(
+      {
+        type: "rhythm-test-height",
+        height,
+      },
+      "*"
+    );
+  };
+
+  sendHeight();
+
+  const observer = new ResizeObserver(() => {
+    sendHeight();
+  });
+
+  observer.observe(document.body);
+
+  window.addEventListener("resize", sendHeight);
+
+  return () => {
+    observer.disconnect();
+    window.removeEventListener("resize", sendHeight);
+  };
+}, []);
+
   return (
     <main className="min-h-[1400px] bg-white text-gray-900">
       <div className="mx-auto max-w-6xl px-4 py-8">
