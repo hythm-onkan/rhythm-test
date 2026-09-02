@@ -4,7 +4,24 @@ import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_BPM = 80;
 const COUNT_IN_BEATS = 4;
+const CALIBRATION_BEATS = 4;
 const TEST_BEATS = 8;
+
+const MAX_MATCH_ERROR = 200;
+const MAX_CALIBRATION_MATCH_ERROR = 500;
+
+const BPM_OPTIONS = [
+  60,
+  70,
+  80,
+  90,
+  100,
+  110,
+  120,
+  130,
+  140,
+  160,
+];
 
 function notifyParentHeight() {
   if (typeof window === "undefined") return;
@@ -20,26 +37,12 @@ function notifyParentHeight() {
   );
 }
 
-const MAX_MATCH_ERROR = 200;
-
-const BPM_OPTIONS = [
-  60,
-  70,
-  80,
-  90,
-  100,
-  110,
-  120,
-  130,
-  140,
-  160,
-];
-
 type InputMode = "tap" | "mic";
 
 type Phase =
   | "idle"
   | "countIn"
+  | "calibrating"
   | "test"
   | "finished";
 
@@ -128,7 +131,20 @@ export default function Home() {
     useState<number[]>([]);
 
   // ==========================================
-  // デバッグ用
+  // マイク補正
+  // ==========================================
+
+  const [micCalibrationOffset, setMicCalibrationOffset] =
+    useState<number | null>(null);
+
+  const [calibrationInputCount, setCalibrationInputCount] =
+    useState(0);
+
+  const micCalibrationOffsetRef =
+    useRef<number>(0);
+
+  // ==========================================
+  // デバッグ
   // ==========================================
 
   const [debugInputErrors, setDebugInputErrors] =
@@ -189,6 +205,19 @@ export default function Home() {
 
   const inputTimesRef =
     useRef<number[]>([]);
+
+  // ==========================================
+  // Calibration timing
+  // ==========================================
+
+  const calibrationBeatTimesRef =
+    useRef<number[]>([]);
+
+  const calibrationInputTimesRef =
+    useRef<number[]>([]);
+
+  const lastCalibrationInputTimeRef =
+    useRef<number>(0);
 
   // ==========================================
   // Double input prevention
@@ -254,7 +283,8 @@ export default function Home() {
   ) => {
     if (
       phaseRef.current === "test" ||
-      phaseRef.current === "countIn"
+      phaseRef.current === "countIn" ||
+      phaseRef.current === "calibrating"
     ) {
       return;
     }
@@ -274,7 +304,8 @@ export default function Home() {
   ) => {
     if (
       phaseRef.current === "test" ||
-      phaseRef.current === "countIn"
+      phaseRef.current === "countIn" ||
+      phaseRef.current === "calibrating"
     ) {
       return;
     }
@@ -290,7 +321,8 @@ export default function Home() {
   // ==========================================
 
   const getBeatInterval = () => {
-    return 60000 / bpmRef.current;
+    return 60000 /
+      bpmRef.current;
   };
 
   // ==========================================
@@ -325,7 +357,8 @@ export default function Home() {
       ) {
         return (
           performanceTime +
-          (audioTime - contextTime) *
+          (audioTime -
+            contextTime) *
             1000
         );
       }
@@ -344,7 +377,8 @@ export default function Home() {
 
     return (
       currentPerformance +
-      (audioTime - currentAudio) *
+      (audioTime -
+        currentAudio) *
         1000
     );
   };
@@ -370,10 +404,13 @@ export default function Home() {
     const gain =
       audioContext.createGain();
 
-    oscillator.type = "sine";
+    oscillator.type =
+      "sine";
 
     oscillator.frequency.value =
-      accent ? 1100 : 750;
+      accent
+        ? 1100
+        : 750;
 
     gain.gain.setValueAtTime(
       0.0001,
@@ -390,7 +427,9 @@ export default function Home() {
       audioTime + 0.08
     );
 
-    oscillator.connect(gain);
+    oscillator.connect(
+      gain
+    );
 
     gain.connect(
       audioContext.destination
@@ -406,7 +445,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // 入力登録
+  // 本番入力登録
   // ==========================================
 
   const registerInput = (
@@ -442,6 +481,46 @@ export default function Home() {
     window.setTimeout(() => {
       setTapFlash(false);
     }, 90);
+  };
+
+  // ==========================================
+  // キャリブレーション入力登録
+  // ==========================================
+
+  const registerCalibrationInput = (
+    timestamp: number
+  ) => {
+    if (
+      phaseRef.current !==
+      "calibrating"
+    ) {
+      return;
+    }
+
+    if (
+      timestamp -
+        lastCalibrationInputTimeRef.current <
+      180
+    ) {
+      return;
+    }
+
+    lastCalibrationInputTimeRef.current =
+      timestamp;
+
+    calibrationInputTimesRef.current.push(
+      timestamp
+    );
+
+    setCalibrationInputCount(
+      calibrationInputTimesRef.current.length
+    );
+
+    setClapDetected(true);
+
+    window.setTimeout(() => {
+      setClapDetected(false);
+    }, 150);
   };
 
   // ==========================================
@@ -523,9 +602,11 @@ export default function Home() {
       const analyser =
         audioContext.createAnalyser();
 
-      analyser.fftSize = 512;
+      analyser.fftSize =
+        512;
 
-      analyser.smoothingTimeConstant = 0;
+      analyser.smoothingTimeConstant =
+        0;
 
       const microphone =
         audioContext.createMediaStreamSource(
@@ -593,7 +674,8 @@ export default function Home() {
 
     const checkVolume = () => {
       if (
-        phaseRef.current !== "test"
+        phaseRef.current !== "test" &&
+        phaseRef.current !== "calibrating"
       ) {
         animationFrameRef.current =
           requestAnimationFrame(
@@ -608,7 +690,6 @@ export default function Home() {
       );
 
       let sum = 0;
-
       let peak = 0;
 
       for (
@@ -617,16 +698,19 @@ export default function Home() {
         i++
       ) {
         const value =
-          (dataArray[i] - 128) /
+          (dataArray[i] -
+            128) /
           128;
 
         const absolute =
           Math.abs(value);
 
         if (
-          absolute > peak
+          absolute >
+          peak
         ) {
-          peak = absolute;
+          peak =
+            absolute;
         }
 
         sum +=
@@ -635,7 +719,8 @@ export default function Home() {
 
       const rms =
         Math.sqrt(
-          sum / bufferLength
+          sum /
+            bufferLength
         );
 
       const volume =
@@ -657,7 +742,8 @@ export default function Home() {
         0.035
       ) {
         if (
-          noiseFloorRef.current === 0
+          noiseFloorRef.current ===
+          0
         ) {
           noiseFloorRef.current =
             volume;
@@ -674,7 +760,7 @@ export default function Home() {
         noiseFloorRef.current;
 
       // ======================================
-      // AudioContext時間
+      // 時間
       // ======================================
 
       const detectionAudioTime =
@@ -686,15 +772,15 @@ export default function Home() {
         );
 
       // ======================================
-      // 自動感度
+      // 感度
       // ======================================
 
       const absoluteThreshold =
-        0.012;
+        0.010;
 
       const relativeThreshold =
         noiseFloor > 0
-          ? noiseFloor * 2.2
+          ? noiseFloor * 2.0
           : 0;
 
       const loudnessThreshold =
@@ -709,7 +795,7 @@ export default function Home() {
 
       const increaseThreshold =
         Math.max(
-          0.003,
+          0.0025,
           noiseFloor * 0.5
         );
 
@@ -718,33 +804,70 @@ export default function Home() {
         increaseThreshold;
 
       const isPeakEnough =
-        peak > 0.055;
+        peak >
+        0.045;
 
-      const enoughTimePassed =
-        detectionTimestamp -
-          lastInputTimeRef.current >
-        140;
+      // ======================================
+      // キャリブレーション
+      // ======================================
 
       if (
-        isLoudEnough &&
-        isSuddenIncrease &&
-        isPeakEnough &&
-        enoughTimePassed
+        phaseRef.current ===
+        "calibrating"
       ) {
-        registerInput(
-          detectionTimestamp
-        );
+        const enoughTimePassed =
+          detectionTimestamp -
+            lastCalibrationInputTimeRef.current >
+          180;
 
-        setClapDetected(true);
+        if (
+          isLoudEnough &&
+          isSuddenIncrease &&
+          isPeakEnough &&
+          enoughTimePassed
+        ) {
+          registerCalibrationInput(
+            detectionTimestamp
+          );
+        }
+      }
 
-        window.setTimeout(() => {
-          setClapDetected(false);
-        }, 150);
+      // ======================================
+      // 本番
+      // ======================================
+
+      if (
+        phaseRef.current ===
+        "test"
+      ) {
+        const enoughTimePassed =
+          detectionTimestamp -
+            lastInputTimeRef.current >
+          140;
+
+        if (
+          isLoudEnough &&
+          isSuddenIncrease &&
+          isPeakEnough &&
+          enoughTimePassed
+        ) {
+          registerInput(
+            detectionTimestamp
+          );
+
+          setClapDetected(true);
+
+          window.setTimeout(() => {
+            setClapDetected(false);
+          }, 150);
+        }
       }
 
       previousVolumeRef.current =
-        previousVolume * 0.35 +
-        volume * 0.65;
+        previousVolume *
+          0.35 +
+        volume *
+          0.65;
 
       animationFrameRef.current =
         requestAnimationFrame(
@@ -753,6 +876,156 @@ export default function Home() {
     };
 
     checkVolume();
+  };
+
+  // ==========================================
+  // 中央値
+  // ==========================================
+
+  const calculateMedian = (
+    values: number[]
+  ) => {
+    if (
+      values.length === 0
+    ) {
+      return 0;
+    }
+
+    const sorted = [
+      ...values,
+    ].sort(
+      (a, b) => a - b
+    );
+
+    const middle =
+      Math.floor(
+        sorted.length / 2
+      );
+
+    if (
+      sorted.length % 2 ===
+      0
+    ) {
+      return (
+        sorted[middle - 1] +
+        sorted[middle]
+      ) / 2;
+    }
+
+    return sorted[middle];
+  };
+
+  // ==========================================
+  // マイクキャリブレーション終了
+  // ==========================================
+
+  const finishMicrophoneCalibration = () => {
+    const beatTimes =
+      calibrationBeatTimesRef.current;
+
+    const inputTimes =
+      calibrationInputTimesRef.current;
+
+    const matchedErrors: number[] =
+      [];
+
+    const usedInputs =
+      new Set<number>();
+
+    for (
+      let i = 0;
+      i < beatTimes.length;
+      i++
+    ) {
+      const beat =
+        beatTimes[i];
+
+      let closestIndex =
+        -1;
+
+      let closestError =
+        Infinity;
+
+      for (
+        let j = 0;
+        j < inputTimes.length;
+        j++
+      ) {
+        if (
+          usedInputs.has(j)
+        ) {
+          continue;
+        }
+
+        const error =
+          inputTimes[j] -
+          beat;
+
+        const absolute =
+          Math.abs(error);
+
+        if (
+          absolute <
+          Math.abs(
+            closestError
+          )
+        ) {
+          closestError =
+            error;
+
+          closestIndex =
+            j;
+        }
+      }
+
+      if (
+        closestIndex !== -1 &&
+        Math.abs(
+          closestError
+        ) <=
+          MAX_CALIBRATION_MATCH_ERROR
+      ) {
+        usedInputs.add(
+          closestIndex
+        );
+
+        matchedErrors.push(
+          closestError
+        );
+      }
+    }
+
+    // ========================================
+    // 2回以上検出できた場合
+    // ========================================
+
+    if (
+      matchedErrors.length >= 2
+    ) {
+      const median =
+        calculateMedian(
+          matchedErrors
+        );
+
+      const rounded =
+        Math.round(
+          median
+        );
+
+      micCalibrationOffsetRef.current =
+        rounded;
+
+      setMicCalibrationOffset(
+        rounded
+      );
+    } else {
+      micCalibrationOffsetRef.current =
+        0;
+
+      setMicCalibrationOffset(
+        null
+      );
+    }
   };
 
   // ==========================================
@@ -773,7 +1046,8 @@ export default function Home() {
         (sum, value) =>
           sum + value,
         0
-      ) / values.length;
+      ) /
+      values.length;
 
     const variance =
       values.reduce(
@@ -784,7 +1058,8 @@ export default function Home() {
             2
           ),
         0
-      ) / values.length;
+      ) /
+      values.length;
 
     return Math.sqrt(
       variance
@@ -899,22 +1174,28 @@ export default function Home() {
     const beatTimes =
       beatTimesRef.current;
 
-    const inputTimes =
+    const rawInputTimes =
       inputTimesRef.current;
 
-    const matched: number[] = [];
-
-    const usedInputs =
-      new Set<number>();
-
     // ========================================
-    // デバッグ用
-    //
-    // 各入力が一番近い拍から
-    // 何ms離れているか
+    // マイク補正
     // ========================================
 
-    const inputDebugErrors: (number | null)[] =
+    const inputTimes =
+      mode === "mic"
+        ? rawInputTimes.map(
+            (input) =>
+              input -
+              micCalibrationOffsetRef.current
+          )
+        : rawInputTimes;
+
+    // ========================================
+    // デバッグ
+    // ========================================
+
+    const inputDebugErrors:
+      (number | null)[] =
       inputTimes.map(
         (input) => {
           let closestError =
@@ -922,21 +1203,21 @@ export default function Home() {
 
           for (
             let i = 0;
-            i < beatTimes.length;
+            i <
+            beatTimes.length;
             i++
           ) {
             const error =
               Math.round(
                 input -
-                  beatTimes[i]
+                beatTimes[i]
               );
 
-            const absolute =
-              Math.abs(error);
-
             if (
-              absolute <
-              Math.abs(closestError)
+              Math.abs(error) <
+              Math.abs(
+                closestError
+              )
             ) {
               closestError =
                 error;
@@ -956,25 +1237,34 @@ export default function Home() {
     );
 
     // ========================================
-    // 各拍に最も近い入力を探す
+    // 各拍に最も近い入力
     // ========================================
+
+    const matched: number[] =
+      [];
+
+    const usedInputs =
+      new Set<number>();
 
     for (
       let i = 0;
-      i < beatTimes.length;
+      i <
+      beatTimes.length;
       i++
     ) {
       const beat =
         beatTimes[i];
 
-      let closestIndex = -1;
+      let closestIndex =
+        -1;
 
       let closestError =
         Infinity;
 
       for (
         let j = 0;
-        j < inputTimes.length;
+        j <
+        inputTimes.length;
         j++
       ) {
         if (
@@ -986,7 +1276,7 @@ export default function Home() {
         const error =
           Math.abs(
             inputTimes[j] -
-              beat
+            beat
           );
 
         if (
@@ -1014,21 +1304,20 @@ export default function Home() {
           Math.round(
             inputTimes[
               closestIndex
-            ] - beat
+            ] -
+              beat
           )
         );
       }
     }
 
-    // ========================================
-    // 採点できた入力数
-    // ========================================
-
     setMatchedCount(
       matched.length
     );
 
-    setErrors(matched);
+    setErrors(
+      matched
+    );
 
     // ========================================
     // 入力なし
@@ -1057,7 +1346,8 @@ export default function Home() {
         (sum, value) =>
           sum + value,
         0
-      ) / matched.length;
+      ) /
+      matched.length;
 
     const roundedMean =
       Math.round(mean);
@@ -1083,10 +1373,6 @@ export default function Home() {
         0
       ) /
       absoluteErrors.length;
-
-    // ========================================
-    // タイミング精度
-    // ========================================
 
     const timingScore =
       calculateTimingScore(
@@ -1120,7 +1406,8 @@ export default function Home() {
           Math.min(
             100,
             100 -
-              sd * 0.5
+              sd *
+                0.5
           )
         );
     } else if (
@@ -1154,9 +1441,13 @@ export default function Home() {
 
     const rawScore =
       Math.round(
-        timingScore * 0.65 +
-          roundedStability * 0.15 +
-          hitRate * 100 * 0.2
+        timingScore *
+          0.65 +
+        roundedStability *
+          0.15 +
+        hitRate *
+          100 *
+          0.2
       );
 
     // ========================================
@@ -1204,102 +1495,12 @@ export default function Home() {
   };
 
   // ==========================================
-  // テスト開始
+  // 通常タップ用プリカウント
   // ==========================================
 
-  const startTest = async () => {
-    if (
-      phaseRef.current !== "idle" &&
-      phaseRef.current !==
-        "finished"
-    ) {
-      return;
-    }
-
-    stopAudio();
-
-    const AudioContextClass =
-      window.AudioContext ||
-      (
-        window as typeof window & {
-          webkitAudioContext?: typeof AudioContext;
-        }
-      ).webkitAudioContext;
-
-    if (!AudioContextClass) {
-      alert(
-        "このブラウザではWeb Audio APIを使用できません。"
-      );
-
-      return;
-    }
-
-    const audioContext =
-      new AudioContextClass();
-
-    await audioContext.resume();
-
-    audioContextRef.current =
-      audioContext;
-
-    // ========================================
-    // 初期化
-    // ========================================
-
-    beatTimesRef.current = [];
-
-    inputTimesRef.current = [];
-
-    lastInputTimeRef.current =
-      0;
-
-    previousVolumeRef.current =
-      0;
-
-    noiseFloorRef.current =
-      0;
-
-    microphoneReadyRef.current =
-      false;
-
-    setTapCount(0);
-
-    setErrors([]);
-
-    setDebugInputErrors([]);
-
-    setMatchedCount(0);
-
-    setScore(null);
-
-    setAverageError(null);
-
-    setStabilityScore(null);
-
-    setStandardDeviation(null);
-
-    setClapDetected(false);
-
-    // ========================================
-    // マイク
-    // ========================================
-
-    if (
-      mode === "mic"
-    ) {
-      const microphoneStarted =
-        await startMicrophone();
-
-      if (!microphoneStarted) {
-        stopAudio();
-        return;
-      }
-    }
-
-    // ========================================
-    // プリカウント
-    // ========================================
-
+  const startNormalCountIn = (
+    audioContext: AudioContext
+  ) => {
     changePhase(
       "countIn"
     );
@@ -1366,6 +1567,302 @@ export default function Home() {
   };
 
   // ==========================================
+  // マイク用
+  //
+  // 4拍プリカウント
+  // ↓
+  // 4拍マイク調整
+  // ↓
+  // 本番8拍
+  // ==========================================
+
+  const startMicrophoneSequence = (
+    audioContext: AudioContext
+  ) => {
+    const beatInterval =
+      getBeatInterval();
+
+    const startAudioTime =
+      audioContext.currentTime +
+      0.15;
+
+    calibrationBeatTimesRef.current =
+      [];
+
+    calibrationInputTimesRef.current =
+      [];
+
+    lastCalibrationInputTimeRef.current =
+      0;
+
+    micCalibrationOffsetRef.current =
+      0;
+
+    setCalibrationInputCount(0);
+
+    setMicCalibrationOffset(null);
+
+    // ========================================
+    // 8拍をスケジュール
+    //
+    // 0〜3拍目 = プリカウント
+    // 4〜7拍目 = マイク調整
+    // ========================================
+
+    for (
+      let i = 0;
+      i <
+      COUNT_IN_BEATS +
+        CALIBRATION_BEATS;
+      i++
+    ) {
+      const audioTime =
+        startAudioTime +
+        i *
+          (beatInterval /
+            1000);
+
+      // マイク調整の4拍だけ記録
+      if (
+        i >=
+        COUNT_IN_BEATS
+      ) {
+        const performanceTime =
+          audioTimeToPerformanceTime(
+            audioTime
+          );
+
+        calibrationBeatTimesRef.current.push(
+          performanceTime
+        );
+      }
+
+      scheduleClick(
+        audioTime,
+        i % 4 === 0
+      );
+    }
+
+    let beatIndex = 0;
+
+    const runSequence = () => {
+      // ======================================
+      // プリカウント終了
+      // ======================================
+
+      if (
+        beatIndex ===
+        COUNT_IN_BEATS
+      ) {
+        changePhase(
+          "calibrating"
+        );
+
+        setCountIn(
+          CALIBRATION_BEATS
+        );
+      }
+
+      // ======================================
+      // マイク調整終了
+      // ======================================
+
+      if (
+        beatIndex ===
+        COUNT_IN_BEATS +
+          CALIBRATION_BEATS
+      ) {
+        finishMicrophoneCalibration();
+
+        const firstBeatAudioTime =
+          startAudioTime +
+          (
+            COUNT_IN_BEATS +
+            CALIBRATION_BEATS
+          ) *
+            (beatInterval /
+              1000);
+
+        startMainTest(
+          firstBeatAudioTime
+        );
+
+        return;
+      }
+
+      // ======================================
+      // 表示
+      // ======================================
+
+      if (
+        beatIndex <
+        COUNT_IN_BEATS
+      ) {
+        // 4 → 3 → 2 → 1
+        setCountIn(
+          COUNT_IN_BEATS -
+            beatIndex
+        );
+      } else {
+        // 4 → 3 → 2 → 1
+        setCountIn(
+          COUNT_IN_BEATS +
+            CALIBRATION_BEATS -
+            beatIndex
+        );
+      }
+
+      beatIndex++;
+
+      timerRef.current =
+        window.setTimeout(
+          runSequence,
+          beatInterval
+        );
+    };
+
+    // 最初はプリカウント
+    changePhase(
+      "countIn"
+    );
+
+    setCountIn(
+      COUNT_IN_BEATS
+    );
+
+    runSequence();
+  };
+
+  // ==========================================
+  // テスト開始
+  // ==========================================
+
+  const startTest = async () => {
+    if (
+      phaseRef.current !==
+        "idle" &&
+      phaseRef.current !==
+        "finished"
+    ) {
+      return;
+    }
+
+    stopAudio();
+
+    const AudioContextClass =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).webkitAudioContext;
+
+    if (!AudioContextClass) {
+      alert(
+        "このブラウザではWeb Audio APIを使用できません。"
+      );
+
+      return;
+    }
+
+    const audioContext =
+      new AudioContextClass();
+
+    await audioContext.resume();
+
+    audioContextRef.current =
+      audioContext;
+
+    // ========================================
+    // 初期化
+    // ========================================
+
+    beatTimesRef.current =
+      [];
+
+    inputTimesRef.current =
+      [];
+
+    calibrationBeatTimesRef.current =
+      [];
+
+    calibrationInputTimesRef.current =
+      [];
+
+    lastInputTimeRef.current =
+      0;
+
+    lastCalibrationInputTimeRef.current =
+      0;
+
+    previousVolumeRef.current =
+      0;
+
+    noiseFloorRef.current =
+      0;
+
+    microphoneReadyRef.current =
+      false;
+
+    micCalibrationOffsetRef.current =
+      0;
+
+    setTapCount(0);
+
+    setCalibrationInputCount(0);
+
+    setErrors([]);
+
+    setDebugInputErrors([]);
+
+    setMatchedCount(0);
+
+    setScore(null);
+
+    setAverageError(null);
+
+    setStabilityScore(null);
+
+    setStandardDeviation(null);
+
+    setClapDetected(false);
+
+    setMicCalibrationOffset(null);
+
+    // ========================================
+    // マイクモード
+    // ========================================
+
+    if (
+      mode === "mic"
+    ) {
+      const microphoneStarted =
+        await startMicrophone();
+
+      if (
+        !microphoneStarted
+      ) {
+        stopAudio();
+        return;
+      }
+
+      startMicrophoneSequence(
+        audioContext
+      );
+
+      return;
+    }
+
+    // ========================================
+    // タップモード
+    // ========================================
+
+    startNormalCountIn(
+      audioContext
+    );
+  };
+
+  // ==========================================
   // 本番開始
   // ==========================================
 
@@ -1379,9 +1876,12 @@ export default function Home() {
       return;
     }
 
-    changePhase("test");
+    changePhase(
+      "test"
+    );
 
-    beatTimesRef.current = [];
+    beatTimesRef.current =
+      [];
 
     const beatInterval =
       getBeatInterval();
@@ -1414,7 +1914,9 @@ export default function Home() {
         clickEnabledRef.current ||
         i < 4;
 
-      if (shouldPlayClick) {
+      if (
+        shouldPlayClick
+      ) {
         scheduleClick(
           audioTime,
           i % 4 === 0
@@ -1440,7 +1942,8 @@ export default function Home() {
       beat: number
     ) => {
       if (
-        beat >= TEST_BEATS
+        beat >=
+        TEST_BEATS
       ) {
         return;
       }
@@ -1472,9 +1975,12 @@ export default function Home() {
                 "finished"
               );
 
-              setCurrentBeat(-1);
+              setCurrentBeat(
+                -1
+              );
             },
-            beatInterval + 500
+            beatInterval +
+              500
           );
       }
     };
@@ -1482,7 +1988,9 @@ export default function Home() {
     timerRef.current =
       window.setTimeout(
         () => {
-          runBeatIndicator(0);
+          runBeatIndicator(
+            0
+          );
         },
         delay
       );
@@ -1636,25 +2144,34 @@ export default function Home() {
     const stability =
       stabilityScore ?? 0;
 
-    if (inputCount <= 3) {
+    if (
+      inputCount <= 3
+    ) {
       return {
-        title: "拍感トレーニング型",
+        title:
+          "拍感トレーニング型",
         description:
           "まずはクリックの拍をしっかり感じ取るところから始めてみましょう。ゆっくりしたテンポで、1拍ずつクリックと同じタイミングに音を出す練習がおすすめです。",
       };
     }
 
-    if (inputCount <= 5) {
+    if (
+      inputCount <= 5
+    ) {
       return {
-        title: "リズム定着中型",
+        title:
+          "リズム定着中型",
         description:
           "クリックに合わせられる場面が増えてきています。まずは8拍すべてを最後まで続けることを意識すると、さらに安定していきます。",
       };
     }
 
-    if (inputCount === 6) {
+    if (
+      inputCount === 6
+    ) {
       return {
-        title: "リズム成長型",
+        title:
+          "リズム成長型",
         description:
           "基本的な拍を捉える力が身についてきています。入力できる拍を少しずつ増やしながら、最後まで安定して続ける練習をしてみましょう。",
       };
@@ -1666,7 +2183,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "精密タイミング型",
+        title:
+          "精密タイミング型",
         description:
           "クリックの中心を非常に正確に捉えています。タイミングの正確さと安定性の両方が高く、非常に優れたリズム感があります。",
       };
@@ -1678,7 +2196,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "安定タイミング型",
+        title:
+          "安定タイミング型",
         description:
           "クリックの中心を安定して捉えています。大きなズレも少なく、一定のテンポをキープする力があります。この感覚をさまざまなテンポでも維持してみましょう。",
       };
@@ -1690,7 +2209,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "安定した前ノリ型",
+        title:
+          "安定した前ノリ型",
         description:
           "タイミングはかなり安定しており、全体的に少し早めに入る傾向があります。前に進むようなリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
       };
@@ -1702,7 +2222,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "安定した後ノリ型",
+        title:
+          "安定した後ノリ型",
         description:
           "タイミングはかなり安定しており、全体的に少し遅めに入る傾向があります。落ち着いたリズム感を持っています。必要に応じて、クリックの中心を狙う練習もしてみましょう。",
       };
@@ -1714,7 +2235,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "前ノリ傾向型",
+        title:
+          "前ノリ傾向型",
         description:
           "全体的に少し早めに入る傾向があります。リズムを前に進める感覚がある一方で、拍の中心から少し前に出やすい傾向があります。クリックの中心を意識してみましょう。",
       };
@@ -1726,7 +2248,8 @@ export default function Home() {
       inputCount >= 7
     ) {
       return {
-        title: "後ノリ傾向型",
+        title:
+          "後ノリ傾向型",
         description:
           "全体的に少し遅めに入る傾向があります。落ち着いて拍を捉えられている一方で、拍の中心より少し後ろに入りやすい傾向があります。クリックの中心を意識してみましょう。",
       };
@@ -1737,7 +2260,8 @@ export default function Home() {
       inputCount >= 6
     ) {
       return {
-        title: "タイミング変動型",
+        title:
+          "タイミング変動型",
         description:
           "拍ごとのタイミングにばらつきが見られます。早くなったり遅くなったりしないよう、クリックをよく聴きながら一定のタイミングで音を出す練習がおすすめです。",
       };
@@ -1748,7 +2272,8 @@ export default function Home() {
       inputCount >= 6
     ) {
       return {
-        title: "タイミング調整型",
+        title:
+          "タイミング調整型",
         description:
           "拍を捉えることはできていますが、クリックとのズレがやや大きくなっています。まずはテンポを落として、クリックの瞬間に合わせる感覚を身につけていきましょう。",
       };
@@ -1759,14 +2284,16 @@ export default function Home() {
       inputCount >= 6
     ) {
       return {
-        title: "リズム安定成長型",
+        title:
+          "リズム安定成長型",
         description:
           "基本的なリズム感が身についてきています。拍を捉える力も比較的安定しています。次はテンポを変えても同じタイミングを維持できるように練習してみましょう。",
       };
     }
 
     return {
-      title: "リズムトレーニング型",
+      title:
+        "リズムトレーニング型",
       description:
         "基本的な拍を捉える力があります。クリックをよく聴きながら、拍の中心に合わせる練習を続けてみましょう。",
     };
@@ -1873,13 +2400,16 @@ export default function Home() {
                     !clickEnabled
                   )
                 }
-                aria-pressed={clickEnabled}
+                aria-pressed={
+                  clickEnabled
+                }
                 className={`relative flex-shrink-0 w-14 h-8 rounded-full transition-colors ${
                   clickEnabled
                     ? "bg-zinc-900"
                     : "bg-zinc-300"
                 }`}
               >
+
                 <span
                   className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
                     clickEnabled
@@ -1887,6 +2417,7 @@ export default function Home() {
                       : "translate-x-0"
                   }`}
                 />
+
               </button>
 
             </div>
@@ -1939,6 +2470,7 @@ export default function Home() {
                 }
                 disabled={
                   phase === "countIn" ||
+                  phase === "calibrating" ||
                   phase === "test"
                 }
                 className="rounded-xl border border-zinc-300 bg-white px-5 py-3 text-2xl font-bold text-center outline-none focus:ring-2 focus:ring-zinc-400 disabled:bg-zinc-100 disabled:text-zinc-400"
@@ -1969,12 +2501,18 @@ export default function Home() {
 
           <div className="h-32 flex items-center justify-center my-6">
 
-            {phase === "countIn" ? (
+            {phase === "countIn" ||
+            phase === "calibrating" ? (
 
               <div className="text-center">
 
                 <p className="text-sm text-zinc-500 mb-2">
-                  プリカウント
+
+                  {phase ===
+                  "calibrating"
+                    ? "マイク調整"
+                    : "プリカウント"}
+
                 </p>
 
                 <div className="text-7xl font-bold leading-none">
@@ -2072,7 +2610,39 @@ export default function Home() {
               </div>
             )}
 
-          {/* マイク */}
+          {/* マイク調整 */}
+
+          {mode === "mic" &&
+            phase === "calibrating" && (
+
+              <div className="h-44 sm:h-48 rounded-3xl bg-white border border-zinc-200 flex items-center justify-center mt-4">
+
+                <div className="text-center px-4">
+
+                  <div className="text-4xl">
+                    👏
+                  </div>
+
+                  <p className="font-semibold mt-2">
+                    クリックに合わせて手拍子してください
+                  </p>
+
+                  <p className="text-sm text-zinc-500 mt-2">
+                    マイクの遅延を自動調整しています
+                  </p>
+
+                  <p className="text-xs text-zinc-400 mt-3">
+                    検出：
+                    {calibrationInputCount}
+                    回
+                  </p>
+
+                </div>
+
+              </div>
+            )}
+
+          {/* マイク本番 */}
 
           {mode === "mic" &&
             phase === "test" && (
@@ -2102,6 +2672,7 @@ export default function Home() {
                     マイク検出中
 
                   </div>
+
                 )}
 
               </div>
@@ -2119,6 +2690,23 @@ export default function Home() {
 
               <p className="text-sm text-zinc-500 mt-1">
                 本番の1拍目から入力してください
+              </p>
+
+            </div>
+          )}
+
+          {/* マイク調整説明 */}
+
+          {phase === "calibrating" && (
+
+            <div className="text-center mt-5">
+
+              <p className="font-semibold">
+                マイクを調整しています
+              </p>
+
+              <p className="text-sm text-zinc-500 mt-1">
+                クリックに合わせて手拍子してください
               </p>
 
             </div>
@@ -2167,9 +2755,59 @@ export default function Home() {
 
               </div>
 
-              {/* ============================
-                  デバッグ情報
-              ============================= */}
+              {/* マイク補正 */}
+
+              {mode === "mic" && (
+
+                <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+
+                  <p className="text-sm text-blue-700">
+                    マイク自動調整
+                  </p>
+
+                  {micCalibrationOffset !== null ? (
+
+                    <div className="mt-2">
+
+                      <p className="text-3xl font-bold text-blue-900">
+
+                        {micCalibrationOffset >=
+                        0
+                          ? `+${micCalibrationOffset}`
+                          : micCalibrationOffset}
+
+                        <span className="text-base ml-1">
+                          ms
+                        </span>
+
+                      </p>
+
+                      <p className="text-sm text-blue-700 mt-2">
+                        この端末のマイク入力遅延を補正して採点しています。
+                      </p>
+
+                    </div>
+
+                  ) : (
+
+                    <div className="mt-2">
+
+                      <p className="font-semibold text-blue-900">
+                        補正データ不足
+                      </p>
+
+                      <p className="text-sm text-blue-700 mt-2">
+                        マイク調整中に2回以上の手拍子を検出できなかったため、補正なしで採点しました。
+                      </p>
+
+                    </div>
+
+                  )}
+
+                </div>
+              )}
+
+              {/* デバッグ */}
 
               {mode === "mic" && (
 
@@ -2182,33 +2820,40 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-3 mt-4">
 
                     <div className="rounded-xl bg-white p-3">
+
                       <p className="text-xs text-zinc-500">
                         検出した入力
                       </p>
 
                       <p className="text-2xl font-bold mt-1">
-                        {tapCount}回
+                        {tapCount}
+                        回
                       </p>
+
                     </div>
 
                     <div className="rounded-xl bg-white p-3">
+
                       <p className="text-xs text-zinc-500">
                         採点できた入力
                       </p>
 
                       <p className="text-2xl font-bold mt-1">
-                        {matchedCount}回
+                        {matchedCount}
+                        回
                       </p>
+
                     </div>
 
                   </div>
 
-                  {debugInputErrors.length > 0 && (
+                  {debugInputErrors.length >
+                    0 && (
 
                     <div className="mt-5">
 
                       <p className="text-sm font-semibold text-orange-900 mb-3">
-                        各検出入力の最も近い拍との差
+                        補正後の各検出入力の最も近い拍との差
                       </p>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -2225,18 +2870,23 @@ export default function Home() {
                             >
 
                               <p className="text-xs text-zinc-400">
-                                入力 {index + 1}
+                                入力{" "}
+                                {index +
+                                  1}
                               </p>
 
                               <p className="font-bold mt-1">
 
-                                {error === null
+                                {error ===
+                                null
                                   ? "-"
-                                  : error > 0
+                                  : error >
+                                    0
                                   ? `+${error}`
                                   : error}
 
-                                {error !== null && (
+                                {error !==
+                                  null && (
                                   <span className="text-xs ml-1 font-normal">
                                     ms
                                   </span>
@@ -2255,13 +2905,11 @@ export default function Home() {
                   )}
 
                   {tapCount > 0 &&
-                    matchedCount === 0 && (
+                    matchedCount ===
+                      0 && (
 
                       <p className="text-sm text-orange-800 mt-5 leading-relaxed">
-                        8回の入力は検出されていますが、
-                        クリックの基準時刻から
-                        ±200ms以内に入った入力がありません。
-                        上の数値を確認してください。
+                        入力は検出されていますが、補正後もクリックの基準時刻から±200ms以内に入った入力がありません。
                       </p>
                     )}
 
@@ -2274,11 +2922,14 @@ export default function Home() {
 
                 <div
                   className={`mt-8 rounded-2xl border p-5 transition-colors ${
-                    stabilityScore >= 90
+                    stabilityScore >=
+                    90
                       ? "bg-green-50 border-green-200"
-                      : stabilityScore >= 75
+                      : stabilityScore >=
+                        75
                       ? "bg-blue-50 border-blue-200"
-                      : stabilityScore >= 60
+                      : stabilityScore >=
+                        60
                       ? "bg-yellow-50 border-yellow-200"
                       : "bg-red-50 border-red-200"
                   }`}
@@ -2290,11 +2941,14 @@ export default function Home() {
 
                       <p
                         className={`text-sm ${
-                          stabilityScore >= 90
+                          stabilityScore >=
+                          90
                             ? "text-green-700"
-                            : stabilityScore >= 75
+                            : stabilityScore >=
+                              75
                             ? "text-blue-700"
-                            : stabilityScore >= 60
+                            : stabilityScore >=
+                              60
                             ? "text-yellow-700"
                             : "text-red-700"
                         }`}
@@ -2304,11 +2958,14 @@ export default function Home() {
 
                       <p
                         className={`text-3xl font-bold mt-1 ${
-                          stabilityScore >= 90
+                          stabilityScore >=
+                          90
                             ? "text-green-800"
-                            : stabilityScore >= 75
+                            : stabilityScore >=
+                              75
                             ? "text-blue-800"
-                            : stabilityScore >= 60
+                            : stabilityScore >=
+                              60
                             ? "text-yellow-800"
                             : "text-red-800"
                         }`}
@@ -2324,7 +2981,8 @@ export default function Home() {
 
                     </div>
 
-                    {standardDeviation !== null && (
+                    {standardDeviation !==
+                      null && (
 
                       <div className="text-right">
 
@@ -2334,7 +2992,9 @@ export default function Home() {
 
                         <p className="font-semibold text-zinc-800">
                           ±
-                          {standardDeviation}
+                          {
+                            standardDeviation
+                          }
                           ms
                         </p>
 
@@ -2352,7 +3012,8 @@ export default function Home() {
 
               {/* 平均タイミング */}
 
-              {averageError !== null && (
+              {averageError !==
+                null && (
 
                 <div className="mt-4 rounded-2xl bg-white border border-zinc-200 p-5">
 
@@ -2362,7 +3023,8 @@ export default function Home() {
 
                   <div className="text-3xl font-bold mt-2">
 
-                    {averageError > 0
+                    {averageError >
+                    0
                       ? `+${averageError}`
                       : averageError}
 
@@ -2422,7 +3084,8 @@ export default function Home() {
 
               {/* 各拍 */}
 
-              {errors.length > 0 && (
+              {errors.length >
+                0 && (
 
                 <div className="mt-8">
 
@@ -2444,12 +3107,15 @@ export default function Home() {
                         >
 
                           <p className="text-xs text-zinc-400">
-                            {index + 1}拍目
+                            {index +
+                              1}
+                            拍目
                           </p>
 
                           <p className="font-semibold mt-1">
 
-                            {error > 0
+                            {error >
+                            0
                               ? `+${error}`
                               : error}
 
@@ -2480,15 +3146,18 @@ export default function Home() {
                   </p>
 
                   <p className="text-2xl font-bold mt-2">
-                    {rhythmDiagnosis.title}
+                    {
+                      rhythmDiagnosis.title
+                    }
                   </p>
 
                   <p className="text-base font-medium text-zinc-200 mt-3 leading-relaxed">
-                    {rhythmDiagnosis.description}
+                    {
+                      rhythmDiagnosis.description
+                    }
                   </p>
 
                 </div>
-
               )}
 
             </div>
