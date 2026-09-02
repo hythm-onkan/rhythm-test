@@ -193,6 +193,13 @@ export default function Home() {
     useRef<number>(0);
 
   // ==========================================
+  // マイク環境音レベル
+  // ==========================================
+
+  const noiseFloorRef =
+    useRef<number>(0);
+
+  // ==========================================
   // BPM ref
   // ==========================================
 
@@ -277,6 +284,8 @@ export default function Home() {
   // ==========================================
   // AudioContext時刻
   // → performance.now()
+  //
+  // クリックとマイクの時間軸を統一する
   // ==========================================
 
   const audioTimeToPerformanceTime = (
@@ -442,7 +451,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // スペースキー
+  // キーボード
   // ==========================================
 
   useEffect(() => {
@@ -506,13 +515,8 @@ export default function Home() {
       // ========================================
       // マイク解析
       //
-      // 以前:
-      // fftSize = 2048
-      //
-      // 今回:
-      // fftSize = 512
-      //
-      // スマホでの検出遅延を減らす
+      // 小さな拍手も拾えるように
+      // 512 samplesで低遅延解析
       // ========================================
 
       const analyser =
@@ -520,8 +524,6 @@ export default function Home() {
 
       analyser.fftSize = 512;
 
-      // 平滑化をOFF
-      // → 音の立ち上がりをすぐ検出
       analyser.smoothingTimeConstant = 0;
 
       const microphone =
@@ -540,6 +542,9 @@ export default function Home() {
         microphone;
 
       previousVolumeRef.current =
+        0;
+
+      noiseFloorRef.current =
         0;
 
       microphoneReadyRef.current =
@@ -586,27 +591,11 @@ export default function Home() {
       );
 
     // ========================================
-    // FFTバッファによる理論上の解析遅延
+    // マイク入力は
+    // AudioContextの時計で時刻を取得する
     //
-    // 512 samples / 48kHz
-    // ≒ 10.7ms
-    //
-    // 512 samples / 44.1kHz
-    // ≒ 11.6ms
-    //
-    // 実際の検出ではバッファの中心付近を
-    // 基準にすることで過補正を防ぐ
+    // これが今回のAndroid対策の重要部分
     // ========================================
-
-    const bufferDurationMs =
-      (
-        bufferLength /
-        audioContext.sampleRate
-      ) *
-      1000;
-
-    const detectionCompensationMs =
-      bufferDurationMs * 0.5;
 
     const checkVolume = () => {
       if (
@@ -665,26 +654,105 @@ export default function Home() {
         volume -
         previousVolume;
 
-      const now =
-        performance.now();
+      // ======================================
+      // 環境音レベルを更新
+      //
+      // 大きな音が発生している時は
+      // ノイズフロアとして記録しない
+      // ======================================
+
+      if (
+        volume <
+        0.035
+      ) {
+        if (
+          noiseFloorRef.current === 0
+        ) {
+          noiseFloorRef.current =
+            volume;
+        } else {
+          noiseFloorRef.current =
+            noiseFloorRef.current *
+              0.97 +
+            volume *
+              0.03;
+        }
+      }
+
+      const noiseFloor =
+        noiseFloorRef.current;
 
       // ======================================
-      // 手拍子検出
+      // マイク検出時刻
       //
-      // 従来より少し早く反応させる
+      // performance.now()ではなく
+      // AudioContextの現在時刻を使用
+      //
+      // これによりAndroidで発生していた
+      // AudioContext ↔ performance.now()
+      // のズレを避ける
       // ======================================
+
+      const detectionAudioTime =
+        audioContext.currentTime;
+
+      const detectionTimestamp =
+        audioTimeToPerformanceTime(
+          detectionAudioTime
+        );
+
+      // ======================================
+      // 自動感度調整
+      //
+      // 固定値だけではなく、
+      // 周囲の音量に対して十分大きくなったか
+      // を見る
+      // ======================================
+
+      const absoluteThreshold =
+        0.012;
+
+      const relativeThreshold =
+        noiseFloor > 0
+          ? noiseFloor * 2.2
+          : 0;
+
+      const loudnessThreshold =
+        Math.max(
+          absoluteThreshold,
+          relativeThreshold
+        );
 
       const isLoudEnough =
-        volume > 0.025;
+        volume >
+        loudnessThreshold;
+
+      const increaseThreshold =
+        Math.max(
+          0.003,
+          noiseFloor * 0.5
+        );
 
       const isSuddenIncrease =
-        volumeIncrease > 0.008;
+        volumeIncrease >
+        increaseThreshold;
+
+      // ======================================
+      // ピーク判定
+      //
+      // iPadで大きな拍手が必要だったため
+      // 以前の0.08より緩める
+      // ======================================
 
       const isPeakEnough =
-        peak > 0.08;
+        peak > 0.055;
+
+      // ======================================
+      // 二重検出防止
+      // ======================================
 
       const enoughTimePassed =
-        now -
+        detectionTimestamp -
           lastInputTimeRef.current >
         140;
 
@@ -694,19 +762,8 @@ export default function Home() {
         isPeakEnough &&
         enoughTimePassed
       ) {
-        // ====================================
-        // 検出時刻を補正
-        //
-        // 「検出した瞬間」ではなく、
-        // 音が実際に発生した時刻に近づける
-        // ====================================
-
-        const correctedTimestamp =
-          now -
-          detectionCompensationMs;
-
         registerInput(
-          correctedTimestamp
+          detectionTimestamp
         );
 
         setClapDetected(true);
@@ -719,8 +776,8 @@ export default function Home() {
       // ======================================
       // 前回音量
       //
-      // smoothingTimeConstantは0なので、
-      // こちらも重い平滑化をしない
+      // 急激な音量変化を残しすぎないように
+      // 軽い平滑化
       // ======================================
 
       previousVolumeRef.current =
@@ -1020,6 +1077,9 @@ export default function Home() {
 
     // ========================================
     // 安定度
+    //
+    // 3回未満では十分なデータがないため
+    // 安定度を高得点にしない
     // ========================================
 
     const sd =
@@ -1034,15 +1094,27 @@ export default function Home() {
       roundedSD
     );
 
-    const stability =
-      Math.max(
-        0,
-        Math.min(
-          100,
-          100 -
-            sd * 0.5
-        )
-      );
+    let stability = 0;
+
+    if (
+      matched.length >= 3
+    ) {
+      stability =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            100 -
+              sd * 0.5
+          )
+        );
+    } else if (
+      matched.length === 2
+    ) {
+      stability = 50;
+    } else {
+      stability = 0;
+    }
 
     const roundedStability =
       Math.round(
@@ -1167,6 +1239,9 @@ export default function Home() {
       0;
 
     previousVolumeRef.current =
+      0;
+
+    noiseFloorRef.current =
       0;
 
     microphoneReadyRef.current =
@@ -1450,6 +1525,9 @@ export default function Home() {
       null;
 
     previousVolumeRef.current =
+      0;
+
+    noiseFloorRef.current =
       0;
 
     microphoneReadyRef.current =
@@ -2032,7 +2110,6 @@ export default function Home() {
                     マイク検出中
 
                   </div>
-
                 )}
 
               </div>
