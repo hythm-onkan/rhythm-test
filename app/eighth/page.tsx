@@ -531,7 +531,9 @@ export default function Home() {
   };
 
   // ==========================================
-  // スペースキー
+  // キーボード入力
+  //
+  // Space / L / R でタップ
   // ==========================================
 
   useEffect(() => {
@@ -539,9 +541,16 @@ export default function Home() {
       event: KeyboardEvent
     ) => {
       if (
-        event.code === "Space" &&
-        mode === "tap" &&
-        phaseRef.current === "test"
+        mode !== "tap" ||
+        phaseRef.current !== "test"
+      ) {
+        return;
+      }
+
+      if (
+        event.code === "Space" ||
+        event.code === "KeyL" ||
+        event.code === "KeyR"
       ) {
         event.preventDefault();
 
@@ -1521,9 +1530,9 @@ export default function Home() {
   // ==========================================
   // マイク用
   //
-  // 4拍プリカウント
+  // 8拍プリカウント
   // ↓
-  // 4拍マイク調整
+  // 8拍マイク調整
   // ↓
   // 本番16拍
   // ==========================================
@@ -1555,10 +1564,10 @@ export default function Home() {
     setMicCalibrationOffset(null);
 
     // ========================================
-    // 8拍をスケジュール
+    // 16拍をスケジュール
     //
-    // 0〜3拍目 = プリカウント
-    // 4〜7拍目 = マイク調整
+    // 0〜7拍目 = プリカウント
+    // 8〜15拍目 = マイク調整
     // ========================================
 
     for (
@@ -2694,12 +2703,12 @@ export default function Home() {
                 </p>
 
                 <p className="text-sm text-blue-800 mt-2 leading-relaxed">
-                  マイクモードでは、テスト前に4拍の自動調整を行います。
+                  マイクモードでは、テスト前に8拍の自動調整を行います。
                   クリックに合わせて手拍子することで、この端末のマイク入力の遅延を自動的に補正します。
                 </p>
 
                 <p className="text-xs text-blue-700 mt-2">
-                  最初の4拍は準備、続く4拍でマイク調整、その後16拍の本番テストです。
+                  最初の8拍は準備、続く8拍でマイク調整、その後16拍の本番テストです。
                 </p>
 
               </div>
@@ -3075,7 +3084,7 @@ export default function Home() {
         <p className="text-center text-xs text-zinc-400 mt-8">
 
           {mode === "tap"
-            ? "クリック・タップ・スペースキーで入力できます。"
+            ? "クリック・タップ・スペースキー・Lキー・Rキーで入力できます。"
             : "マイクで手拍子のタイミングを検出します。"}
 
         </p>
