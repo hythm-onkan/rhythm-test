@@ -6,7 +6,6 @@ const DEFAULT_BPM = 80;
 const COUNT_IN_BEATS = 4;
 const TEST_BEATS = 8;
 
-// iframeの高さを親ページ（WordPress）へ通知
 function notifyParentHeight() {
   if (typeof window === "undefined") return;
 
@@ -21,7 +20,6 @@ function notifyParentHeight() {
   );
 }
 
-// タップを有効とする最大ズレ
 const MAX_MATCH_ERROR = 200;
 
 const BPM_OPTIONS = [
@@ -75,7 +73,7 @@ export default function Home() {
     useState<InputMode>("tap");
 
   // ==========================================
-  // クリック音 ON / OFF
+  // クリック音
   // ==========================================
 
   const [clickEnabled, setClickEnabled] =
@@ -110,6 +108,10 @@ export default function Home() {
   const [tapCount, setTapCount] =
     useState(0);
 
+  // ==========================================
+  // 結果
+  // ==========================================
+
   const [score, setScore] =
     useState<number | null>(null);
 
@@ -124,6 +126,16 @@ export default function Home() {
 
   const [errors, setErrors] =
     useState<number[]>([]);
+
+  // ==========================================
+  // デバッグ用
+  // ==========================================
+
+  const [debugInputErrors, setDebugInputErrors] =
+    useState<(number | null)[]>([]);
+
+  const [matchedCount, setMatchedCount] =
+    useState(0);
 
   // ==========================================
   // Audio
@@ -193,28 +205,28 @@ export default function Home() {
     useRef<number>(0);
 
   // ==========================================
-  // マイク環境音レベル
+  // Microphone noise floor
   // ==========================================
 
   const noiseFloorRef =
     useRef<number>(0);
 
   // ==========================================
-  // BPM ref
+  // BPM
   // ==========================================
 
   const bpmRef =
     useRef<number>(DEFAULT_BPM);
 
   // ==========================================
-  // Click setting ref
+  // Click setting
   // ==========================================
 
   const clickEnabledRef =
     useRef<boolean>(true);
 
   // ==========================================
-  // マイク検出用
+  // Microphone ready
   // ==========================================
 
   const microphoneReadyRef =
@@ -234,7 +246,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // クリック音設定変更
+  // クリック設定変更
   // ==========================================
 
   const handleClickEnabledChange = (
@@ -274,7 +286,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // 現在のBPMから1拍の長さ
+  // 1拍の長さ
   // ==========================================
 
   const getBeatInterval = () => {
@@ -282,10 +294,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // AudioContext時刻
-  // → performance.now()
-  //
-  // クリックとマイクの時間軸を統一する
+  // AudioContext → performance.now()
   // ==========================================
 
   const audioTimeToPerformanceTime = (
@@ -409,7 +418,6 @@ export default function Home() {
       return;
     }
 
-    // 二重入力防止
     if (
       timestamp -
         lastInputTimeRef.current <
@@ -451,7 +459,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // キーボード
+  // スペースキー
   // ==========================================
 
   useEffect(() => {
@@ -511,13 +519,6 @@ export default function Home() {
       if (!audioContext) {
         return false;
       }
-
-      // ========================================
-      // マイク解析
-      //
-      // 小さな拍手も拾えるように
-      // 512 samplesで低遅延解析
-      // ========================================
 
       const analyser =
         audioContext.createAnalyser();
@@ -590,13 +591,6 @@ export default function Home() {
         bufferLength
       );
 
-    // ========================================
-    // マイク入力は
-    // AudioContextの時計で時刻を取得する
-    //
-    // これが今回のAndroid対策の重要部分
-    // ========================================
-
     const checkVolume = () => {
       if (
         phaseRef.current !== "test"
@@ -655,10 +649,7 @@ export default function Home() {
         previousVolume;
 
       // ======================================
-      // 環境音レベルを更新
-      //
-      // 大きな音が発生している時は
-      // ノイズフロアとして記録しない
+      // ノイズフロア
       // ======================================
 
       if (
@@ -683,14 +674,7 @@ export default function Home() {
         noiseFloorRef.current;
 
       // ======================================
-      // マイク検出時刻
-      //
-      // performance.now()ではなく
-      // AudioContextの現在時刻を使用
-      //
-      // これによりAndroidで発生していた
-      // AudioContext ↔ performance.now()
-      // のズレを避ける
+      // AudioContext時間
       // ======================================
 
       const detectionAudioTime =
@@ -702,11 +686,7 @@ export default function Home() {
         );
 
       // ======================================
-      // 自動感度調整
-      //
-      // 固定値だけではなく、
-      // 周囲の音量に対して十分大きくなったか
-      // を見る
+      // 自動感度
       // ======================================
 
       const absoluteThreshold =
@@ -737,19 +717,8 @@ export default function Home() {
         volumeIncrease >
         increaseThreshold;
 
-      // ======================================
-      // ピーク判定
-      //
-      // iPadで大きな拍手が必要だったため
-      // 以前の0.08より緩める
-      // ======================================
-
       const isPeakEnough =
         peak > 0.055;
-
-      // ======================================
-      // 二重検出防止
-      // ======================================
 
       const enoughTimePassed =
         detectionTimestamp -
@@ -772,13 +741,6 @@ export default function Home() {
           setClapDetected(false);
         }, 150);
       }
-
-      // ======================================
-      // 前回音量
-      //
-      // 急激な音量変化を残しすぎないように
-      // 軽い平滑化
-      // ======================================
 
       previousVolumeRef.current =
         previousVolume * 0.35 +
@@ -830,7 +792,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // タイミング点を計算
+  // タイミング点
   // ==========================================
 
   const calculateTimingScore = (
@@ -946,6 +908,54 @@ export default function Home() {
       new Set<number>();
 
     // ========================================
+    // デバッグ用
+    //
+    // 各入力が一番近い拍から
+    // 何ms離れているか
+    // ========================================
+
+    const inputDebugErrors: (number | null)[] =
+      inputTimes.map(
+        (input) => {
+          let closestError =
+            Infinity;
+
+          for (
+            let i = 0;
+            i < beatTimes.length;
+            i++
+          ) {
+            const error =
+              Math.round(
+                input -
+                  beatTimes[i]
+              );
+
+            const absolute =
+              Math.abs(error);
+
+            if (
+              absolute <
+              Math.abs(closestError)
+            ) {
+              closestError =
+                error;
+            }
+          }
+
+          return Number.isFinite(
+            closestError
+          )
+            ? closestError
+            : null;
+        }
+      );
+
+    setDebugInputErrors(
+      inputDebugErrors
+    );
+
+    // ========================================
     // 各拍に最も近い入力を探す
     // ========================================
 
@@ -1009,6 +1019,14 @@ export default function Home() {
         );
       }
     }
+
+    // ========================================
+    // 採点できた入力数
+    // ========================================
+
+    setMatchedCount(
+      matched.length
+    );
 
     setErrors(matched);
 
@@ -1077,9 +1095,6 @@ export default function Home() {
 
     // ========================================
     // 安定度
-    //
-    // 3回未満では十分なデータがないため
-    // 安定度を高得点にしない
     // ========================================
 
     const sd =
@@ -1251,6 +1266,10 @@ export default function Home() {
 
     setErrors([]);
 
+    setDebugInputErrors([]);
+
+    setMatchedCount(0);
+
     setScore(null);
 
     setAverageError(null);
@@ -1324,10 +1343,6 @@ export default function Home() {
           (beatInterval /
             1000);
 
-      // ======================================
-      // プリカウントは常にクリックあり
-      // ======================================
-
       scheduleClick(
         audioTime,
         count === 0
@@ -1372,7 +1387,7 @@ export default function Home() {
       getBeatInterval();
 
     // ========================================
-    // 8拍を予約
+    // 8拍
     // ========================================
 
     for (
@@ -1394,10 +1409,6 @@ export default function Home() {
       beatTimesRef.current.push(
         performanceTime
       );
-
-      // ======================================
-      // クリック音
-      // ======================================
 
       const shouldPlayClick =
         clickEnabledRef.current ||
@@ -1625,9 +1636,6 @@ export default function Home() {
     const stability =
       stabilityScore ?? 0;
 
-    const sd =
-      standardDeviation ?? 999;
-
     if (inputCount <= 3) {
       return {
         title: "拍感トレーニング型",
@@ -1764,12 +1772,12 @@ export default function Home() {
     };
   };
 
+  const rhythmDiagnosis =
+    getRhythmDiagnosis();
+
   // ==========================================
   // 画面
   // ==========================================
-
-  const rhythmDiagnosis =
-    getRhythmDiagnosis();
 
   return (
     <main
@@ -1779,9 +1787,7 @@ export default function Home() {
     >
       <div className="w-full max-w-3xl">
 
-        {/* ===================================
-            タイトル
-        ==================================== */}
+        {/* タイトル */}
 
         <div className="text-center mb-10">
 
@@ -1799,9 +1805,7 @@ export default function Home() {
 
         </div>
 
-        {/* ===================================
-            モード選択
-        ==================================== */}
+        {/* モード */}
 
         {(phase === "idle" ||
           phase === "finished") && (
@@ -1839,9 +1843,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* ===================================
-            設定
-        ==================================== */}
+        {/* 設定 */}
 
         {(phase === "idle" ||
           phase === "finished") && (
@@ -1912,15 +1914,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* ===================================
-            メインカード
-        ==================================== */}
+        {/* メインカード */}
 
         <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-8 sm:p-12 shadow-sm">
 
-          {/* =================================
-              BPM
-          ================================== */}
+          {/* BPM */}
 
           <div className="text-center">
 
@@ -1967,9 +1965,7 @@ export default function Home() {
 
           </div>
 
-          {/* =================================
-              ビート表示
-          ================================== */}
+          {/* ビート */}
 
           <div className="h-32 flex items-center justify-center my-6">
 
@@ -2030,9 +2026,7 @@ export default function Home() {
 
           </div>
 
-          {/* =================================
-              TAPボタン
-          ================================== */}
+          {/* TAP */}
 
           {mode === "tap" &&
             phase !== "finished" && (
@@ -2078,9 +2072,7 @@ export default function Home() {
               </div>
             )}
 
-          {/* =================================
-              マイク
-          ================================== */}
+          {/* マイク */}
 
           {mode === "mic" &&
             phase === "test" && (
@@ -2115,9 +2107,7 @@ export default function Home() {
               </div>
             )}
 
-          {/* =================================
-              プリカウント
-          ================================== */}
+          {/* プリカウント */}
 
           {phase === "countIn" && (
 
@@ -2134,9 +2124,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* =================================
-              本番
-          ================================== */}
+          {/* 本番 */}
 
           {phase === "test" && (
 
@@ -2153,9 +2141,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* =================================
-              結果
-          ================================== */}
+          {/* 結果 */}
 
           {phase === "finished" && (
 
@@ -2180,6 +2166,107 @@ export default function Home() {
                 </div>
 
               </div>
+
+              {/* ============================
+                  デバッグ情報
+              ============================= */}
+
+              {mode === "mic" && (
+
+                <div className="mt-8 rounded-2xl border border-orange-200 bg-orange-50 p-5">
+
+                  <p className="font-semibold text-orange-900">
+                    マイク検出デバッグ
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-xs text-zinc-500">
+                        検出した入力
+                      </p>
+
+                      <p className="text-2xl font-bold mt-1">
+                        {tapCount}回
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-white p-3">
+                      <p className="text-xs text-zinc-500">
+                        採点できた入力
+                      </p>
+
+                      <p className="text-2xl font-bold mt-1">
+                        {matchedCount}回
+                      </p>
+                    </div>
+
+                  </div>
+
+                  {debugInputErrors.length > 0 && (
+
+                    <div className="mt-5">
+
+                      <p className="text-sm font-semibold text-orange-900 mb-3">
+                        各検出入力の最も近い拍との差
+                      </p>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+
+                        {debugInputErrors.map(
+                          (
+                            error,
+                            index
+                          ) => (
+
+                            <div
+                              key={index}
+                              className="rounded-xl bg-white border border-orange-100 p-3 text-center"
+                            >
+
+                              <p className="text-xs text-zinc-400">
+                                入力 {index + 1}
+                              </p>
+
+                              <p className="font-bold mt-1">
+
+                                {error === null
+                                  ? "-"
+                                  : error > 0
+                                  ? `+${error}`
+                                  : error}
+
+                                {error !== null && (
+                                  <span className="text-xs ml-1 font-normal">
+                                    ms
+                                  </span>
+                                )}
+
+                              </p>
+
+                            </div>
+
+                          )
+                        )}
+
+                      </div>
+
+                    </div>
+                  )}
+
+                  {tapCount > 0 &&
+                    matchedCount === 0 && (
+
+                      <p className="text-sm text-orange-800 mt-5 leading-relaxed">
+                        8回の入力は検出されていますが、
+                        クリックの基準時刻から
+                        ±200ms以内に入った入力がありません。
+                        上の数値を確認してください。
+                      </p>
+                    )}
+
+                </div>
+              )}
 
               {/* タイミング安定度 */}
 
@@ -2407,9 +2494,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* =================================
-              スタート
-          ================================== */}
+          {/* スタート */}
 
           {(phase === "idle" ||
             phase === "finished") && (
@@ -2429,9 +2514,7 @@ export default function Home() {
             </button>
           )}
 
-          {/* =================================
-              入力数
-          ================================== */}
+          {/* 入力数 */}
 
           {(phase === "test" ||
             phase === "finished") && (
@@ -2451,9 +2534,7 @@ export default function Home() {
 
         </div>
 
-        {/* ===================================
-            説明
-        ==================================== */}
+        {/* 説明 */}
 
         <p className="text-center text-xs text-zinc-400 mt-8">
 
