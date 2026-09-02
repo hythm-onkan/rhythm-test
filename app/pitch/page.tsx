@@ -1105,7 +1105,7 @@ export default function PitchPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-white px-4 py-8 text-gray-900">
+    <main className="min-h-[1400px] bg-white text-gray-900">
       <div className="mx-auto max-w-6xl px-4 py-8">
   <div className="origin-top scale-[0.8]">
 
