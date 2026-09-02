@@ -207,6 +207,13 @@ export default function Home() {
     useRef<boolean>(true);
 
   // ==========================================
+  // マイク検出用
+  // ==========================================
+
+  const microphoneReadyRef =
+    useRef<boolean>(false);
+
+  // ==========================================
   // Phase変更
   // ==========================================
 
@@ -226,7 +233,6 @@ export default function Home() {
   const handleClickEnabledChange = (
     enabled: boolean
   ) => {
-    // テスト中は変更不可
     if (
       phaseRef.current === "test" ||
       phaseRef.current === "countIn"
@@ -261,7 +267,7 @@ export default function Home() {
   };
 
   // ==========================================
-  // 現在のBPMから1拍の長さを計算
+  // 現在のBPMから1拍の長さ
   // ==========================================
 
   const getBeatInterval = () => {
@@ -270,8 +276,7 @@ export default function Home() {
 
   // ==========================================
   // AudioContext時刻
-  // →
-  // performance.now()
+  // → performance.now()
   // ==========================================
 
   const audioTimeToPerformanceTime = (
@@ -319,18 +324,10 @@ export default function Home() {
     const currentAudio =
       audioContext.currentTime;
 
-    const outputLatency =
-      (
-        audioContext as AudioContext & {
-          outputLatency?: number;
-        }
-      ).outputLatency ?? 0;
-
     return (
       currentPerformance +
       (audioTime - currentAudio) *
-        1000 +
-      outputLatency * 1000
+        1000
     );
   };
 
@@ -491,6 +488,7 @@ export default function Home() {
               echoCancellation: false,
               noiseSuppression: false,
               autoGainControl: false,
+              channelCount: 1,
             },
           }
         );
@@ -505,13 +503,26 @@ export default function Home() {
         return false;
       }
 
+      // ========================================
+      // マイク解析
+      //
+      // 以前:
+      // fftSize = 2048
+      //
+      // 今回:
+      // fftSize = 512
+      //
+      // スマホでの検出遅延を減らす
+      // ========================================
+
       const analyser =
         audioContext.createAnalyser();
 
-      analyser.fftSize = 2048;
+      analyser.fftSize = 512;
 
-      analyser.smoothingTimeConstant =
-        0.2;
+      // 平滑化をOFF
+      // → 音の立ち上がりをすぐ検出
+      analyser.smoothingTimeConstant = 0;
 
       const microphone =
         audioContext.createMediaStreamSource(
@@ -530,6 +541,9 @@ export default function Home() {
 
       previousVolumeRef.current =
         0;
+
+      microphoneReadyRef.current =
+        true;
 
       detectClap();
 
@@ -553,7 +567,13 @@ export default function Home() {
     const analyser =
       analyserRef.current;
 
-    if (!analyser) {
+    const audioContext =
+      audioContextRef.current;
+
+    if (
+      !analyser ||
+      !audioContext
+    ) {
       return;
     }
 
@@ -564,6 +584,29 @@ export default function Home() {
       new Uint8Array(
         bufferLength
       );
+
+    // ========================================
+    // FFTバッファによる理論上の解析遅延
+    //
+    // 512 samples / 48kHz
+    // ≒ 10.7ms
+    //
+    // 512 samples / 44.1kHz
+    // ≒ 11.6ms
+    //
+    // 実際の検出ではバッファの中心付近を
+    // 基準にすることで過補正を防ぐ
+    // ========================================
+
+    const bufferDurationMs =
+      (
+        bufferLength /
+        audioContext.sampleRate
+      ) *
+      1000;
+
+    const detectionCompensationMs =
+      bufferDurationMs * 0.5;
 
     const checkVolume = () => {
       if (
@@ -583,6 +626,8 @@ export default function Home() {
 
       let sum = 0;
 
+      let peak = 0;
+
       for (
         let i = 0;
         i < bufferLength;
@@ -591,6 +636,15 @@ export default function Home() {
         const value =
           (dataArray[i] - 128) /
           128;
+
+        const absolute =
+          Math.abs(value);
+
+        if (
+          absolute > peak
+        ) {
+          peak = absolute;
+        }
 
         sum +=
           value * value;
@@ -601,23 +655,59 @@ export default function Home() {
           sum / bufferLength
         );
 
-      const volume = rms;
+      const volume =
+        rms;
+
+      const previousVolume =
+        previousVolumeRef.current;
 
       const volumeIncrease =
         volume -
-        previousVolumeRef.current;
+        previousVolume;
 
       const now =
         performance.now();
 
-      if (
-        volume > 0.03 &&
-        volumeIncrease > 0.01 &&
+      // ======================================
+      // 手拍子検出
+      //
+      // 従来より少し早く反応させる
+      // ======================================
+
+      const isLoudEnough =
+        volume > 0.025;
+
+      const isSuddenIncrease =
+        volumeIncrease > 0.008;
+
+      const isPeakEnough =
+        peak > 0.08;
+
+      const enoughTimePassed =
         now -
           lastInputTimeRef.current >
-          180
+        140;
+
+      if (
+        isLoudEnough &&
+        isSuddenIncrease &&
+        isPeakEnough &&
+        enoughTimePassed
       ) {
-        registerInput(now);
+        // ====================================
+        // 検出時刻を補正
+        //
+        // 「検出した瞬間」ではなく、
+        // 音が実際に発生した時刻に近づける
+        // ====================================
+
+        const correctedTimestamp =
+          now -
+          detectionCompensationMs;
+
+        registerInput(
+          correctedTimestamp
+        );
 
         setClapDetected(true);
 
@@ -626,10 +716,16 @@ export default function Home() {
         }, 150);
       }
 
+      // ======================================
+      // 前回音量
+      //
+      // smoothingTimeConstantは0なので、
+      // こちらも重い平滑化をしない
+      // ======================================
+
       previousVolumeRef.current =
-        previousVolumeRef.current *
-          0.8 +
-        volume * 0.2;
+        previousVolume * 0.35 +
+        volume * 0.65;
 
       animationFrameRef.current =
         requestAnimationFrame(
@@ -1073,6 +1169,9 @@ export default function Home() {
     previousVolumeRef.current =
       0;
 
+    microphoneReadyRef.current =
+      false;
+
     setTapCount(0);
 
     setErrors([]);
@@ -1222,14 +1321,7 @@ export default function Home() {
       );
 
       // ======================================
-      // クリック音の設定
-      //
-      // ON
-      // → 8拍すべて鳴る
-      //
-      // OFF
-      // → 1〜4拍だけ鳴る
-      // → 5〜8拍は無音
+      // クリック音
       // ======================================
 
       const shouldPlayClick =
@@ -1359,6 +1451,9 @@ export default function Home() {
 
     previousVolumeRef.current =
       0;
+
+    microphoneReadyRef.current =
+      false;
 
     if (
       audioContextRef.current
@@ -1692,27 +1787,27 @@ export default function Home() {
               </div>
 
               <button
-  type="button"
-  onClick={() =>
-    handleClickEnabledChange(
-      !clickEnabled
-    )
-  }
-  aria-pressed={clickEnabled}
-  className={`relative flex-shrink-0 w-14 h-8 rounded-full transition-colors ${
-    clickEnabled
-      ? "bg-zinc-900"
-      : "bg-zinc-300"
-  }`}
->
-  <span
-    className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
-      clickEnabled
-        ? "translate-x-6"
-        : "translate-x-0"
-    }`}
-  />
-</button>
+                type="button"
+                onClick={() =>
+                  handleClickEnabledChange(
+                    !clickEnabled
+                  )
+                }
+                aria-pressed={clickEnabled}
+                className={`relative flex-shrink-0 w-14 h-8 rounded-full transition-colors ${
+                  clickEnabled
+                    ? "bg-zinc-900"
+                    : "bg-zinc-300"
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                    clickEnabled
+                      ? "translate-x-6"
+                      : "translate-x-0"
+                  }`}
+                />
+              </button>
 
             </div>
 
@@ -1842,8 +1937,6 @@ export default function Home() {
                   )}
 
                 </div>
-
-                {/* 無音区間表示 */}
 
                 {phase === "test" &&
                   !clickEnabled && (
