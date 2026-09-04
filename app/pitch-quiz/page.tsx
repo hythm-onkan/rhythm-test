@@ -982,68 +982,124 @@ export default function PitchQuizPage() {
      WordPress iframe 高さ
   ======================================================= */
 
-  useEffect(() => {
-    const sendHeight =
-      () => {
-        const element =
-          appRef.current;
+  /* =======================================================
+   WordPress iframe 高さ自動調整
+======================================================= */
 
-        if (!element) {
-          return;
-        }
+useEffect(() => {
+  const sendHeight = () => {
+    const element = appRef.current;
 
-        const height =
-          Math.ceil(
-            element.getBoundingClientRect()
-              .height
-          );
-
-        window.parent.postMessage(
-          {
-            type:
-              "rhythm-test-height",
-            height:
-              height + 10,
-          },
-          "*"
-        );
-      };
-
-    sendHeight();
-
-    const observer =
-      new ResizeObserver(
-        sendHeight
-      );
-
-    if (
-      appRef.current
-    ) {
-      observer.observe(
-        appRef.current
-      );
+    if (!element) {
+      return;
     }
 
-    window.addEventListener(
+    /*
+     * scale()を使っているため、
+     * getBoundingClientRect()だけではなく
+     * 実際のコンテンツ高さも確認する。
+     */
+    const rectHeight =
+      element.getBoundingClientRect().height;
+
+    const scrollHeight =
+      element.scrollHeight;
+
+    const height = Math.ceil(
+      Math.max(
+        rectHeight,
+        scrollHeight * 0.7
+      )
+    );
+
+    window.parent.postMessage(
+      {
+        type: "rhythm-test-height",
+        height: height + 20,
+      },
+      "*"
+    );
+  };
+
+  /*
+   * 初回
+   */
+  sendHeight();
+
+  /*
+   * コンテンツの高さが変わったら更新
+   */
+  const observer =
+    new ResizeObserver(() => {
+      sendHeight();
+    });
+
+  if (appRef.current) {
+    observer.observe(
+      appRef.current
+    );
+  }
+
+  /*
+   * 画像・フォント・画面サイズ変更など
+   */
+  window.addEventListener(
+    "resize",
+    sendHeight
+  );
+
+  /*
+   * 少し遅れてもう一度測定
+   *
+   * WordPress iframe内でフォントやレイアウトが
+   *確定した後の高さも取得する。
+   */
+  const timer1 =
+    window.setTimeout(
+      sendHeight,
+      100
+    );
+
+  const timer2 =
+    window.setTimeout(
+      sendHeight,
+      500
+    );
+
+  const timer3 =
+    window.setTimeout(
+      sendHeight,
+      1000
+    );
+
+  return () => {
+    observer.disconnect();
+
+    window.removeEventListener(
       "resize",
       sendHeight
     );
 
-    return () => {
-      observer.disconnect();
+    window.clearTimeout(
+      timer1
+    );
 
-      window.removeEventListener(
-        "resize",
-        sendHeight
-      );
-    };
-  }, [
-    started,
-    finished,
-    showDetails,
-    micOn,
-    micAnswerReady,
-  ]);
+    window.clearTimeout(
+      timer2
+    );
+
+    window.clearTimeout(
+      timer3
+    );
+  };
+
+}, [
+  started,
+  finished,
+  showDetails,
+  micOn,
+  micAnswerReady,
+]);
 
 
   /* =======================================================
