@@ -3352,7 +3352,7 @@ useEffect(() => {
 
         <div
           ref={appRef}
-          className="origin-top scale-[0.85] md:scale-[0.7]"
+          className="origin-top scale-[0.9] md:scale-[0.7]"
         >
 
           <div className="mx-auto w-full max-w-3xl px-5 py-7">
@@ -3844,7 +3844,7 @@ useEffect(() => {
 
         <div
           ref={appRef}
-          className="origin-top scale-[0.85] md:scale-[0.7]"
+          className="origin-top scale-[0.9] md:scale-[0.7]"
         >
 
           <div className="mx-auto w-full max-w-3xl px-5 py-7">
@@ -4042,7 +4042,7 @@ useEffect(() => {
 
       <div
         ref={appRef}
-        className="origin-top scale-[0.85] md:scale-[0.7]"
+        className="origin-top scale-[0.9] md:scale-[0.7]"
       >
 
         <div className="mx-auto w-full max-w-3xl px-5 py-7">
