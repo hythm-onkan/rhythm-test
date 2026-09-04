@@ -4631,61 +4631,80 @@ useEffect(() => {
               {!micAnswerReady && (
 
                 <button
-                  type="button"
+  type="button"
 
-                  onMouseDown={(
-                    event
-                  ) => {
+  onPointerDown={(event) => {
+    event.preventDefault();
 
-                    event.preventDefault();
+    /*
+     * 指・マウスどちらでも
+     * 「押している状態」を取得
+     */
+    mouseMicRef.current = true;
 
-                    mouseMicRef.current =
-                      true;
+    /*
+     * ポインターをこのボタンに固定
+     *
+     * スマホで指が少し動いても
+     * pointerupを取りこぼしにくくする。
+     */
+    event.currentTarget.setPointerCapture(
+      event.pointerId
+    );
 
-                    pressMic();
+    pressMic();
+  }}
 
-                  }}
+  onPointerUp={(event) => {
+    event.preventDefault();
 
-                  onMouseUp={(
-                    event
-                  ) => {
+    mouseMicRef.current = false;
 
-                    event.preventDefault();
+    releaseMicButton();
 
-                    mouseMicRef.current =
-                      false;
+    try {
+      event.currentTarget.releasePointerCapture(
+        event.pointerId
+      );
+    } catch {
+      /* ignore */
+    }
+  }}
 
-                    releaseMicButton();
+  onPointerCancel={(event) => {
+    event.preventDefault();
 
-                  }}
+    mouseMicRef.current = false;
 
-                  onMouseLeave={() => {
+    releaseMicButton();
+  }}
 
-                    mouseMicRef.current =
-                      false;
+  onPointerLeave={() => {
+    /*
+     * Pointer Capture中は基本的に
+     * pointerupまでボタンが操作対象になるため、
+     * ここでは強制停止しない。
+     */
+  }}
 
-                    releaseMicButton();
+  onContextMenu={(event) => {
+    event.preventDefault();
+  }}
 
-                  }}
+  style={{
+    touchAction: "none",
+  }}
 
-                  onContextMenu={(
-                    event
-                  ) => {
-                    event.preventDefault();
-                  }}
-
-                  className={`mt-5 flex h-[72px] w-full items-center justify-center rounded-3xl px-6 text-lg font-black text-white select-none ${
-                    micOn
-                      ? "bg-red-500"
-                      : "bg-slate-950"
-                  }`}
-                >
-
-                  {micOn
-                    ? "🎤 歌い終わったら離す"
-                    : "🎤 押している間歌う"}
-
-                </button>
+  className={`mt-5 flex h-[72px] w-full items-center justify-center rounded-3xl px-6 text-lg font-black text-white select-none ${
+    micOn
+      ? "bg-red-500"
+      : "bg-slate-950"
+  }`}
+>
+  {micOn
+    ? "🎤 歌い終わったら離す"
+    : "🎤 押している間歌う"}
+</button>
 
               )}
 
